@@ -1,0 +1,40 @@
+CXX = g++
+NVCC = nvcc
+
+CXXFLAGS = -g -std=c++17 -I/usr/local/include/opencv4 -I/usr/local/cuda/include \
+		   -I/usr/include/hdf5/serial -I/home/hug/workspace/software/argparse/include
+
+LDFLAGS = -L/usr/local/lib -lopencv_core -lopencv_imgproc -lopencv_highgui \
+		  -L/usr/local/cuda/lib64 -lcudart -lcufft -lnppidei -lnppc\
+          -L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_cpp -lhdf5 \
+		  
+
+# define output file
+TARGET = holo_recons
+
+# define source file
+CPP_SRCS = argRecons.cpp ../math_utils.cpp ../imageio_utils.cpp ../ProjectionSolver.cpp
+CUDA_SRCS = ../Propagator.cu ../WaveField.cu ../Projector.cu ../holo_recons.cu ../cuda_utils.cu
+
+# 定义依赖文件
+CPP_OBJS = $(CPP_SRCS:.cpp=.o)
+CUDA_OBJS = $(CUDA_SRCS:.cu=.o)
+OBJS = $(CPP_OBJS) $(CUDA_OBJS)
+
+# 默认目标
+all: $(TARGET)
+
+# 链接目标文件
+$(TARGET): $(OBJS)
+	$(NVCC) -o $@ $^ $(LDFLAGS)
+
+# 定义编译规则
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+%.o: %.cu
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
+
+.PHONY: clean
+clean:
+	rm -f $(OBJS) $(TARGET)

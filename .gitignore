@@ -1,0 +1,5 @@
+*.out
+*.o
+examples/test*
+examples/holo*
+.vscode/
