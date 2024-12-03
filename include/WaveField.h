@@ -27,8 +27,8 @@ class WaveField
         cuFloatComplex *getComplexWave() const {return complexWave;}
         void setByAmplitude(const float *targetAmplitude);
         void setByPhase(const float *targetPhase);
-        WaveField operator+(const WaveField &waveField) const;
-        WaveField operator-(const WaveField &waveField) const;
+        WaveField& operator+(const WaveField &waveField);
+        WaveField& operator-(const WaveField &waveField);
         WaveField &operator*(float n);
         WaveField &operator=(const WaveField &waveField);
         friend WaveField operator*(float n, const WaveField &waveField);

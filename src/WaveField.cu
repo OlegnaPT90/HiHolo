@@ -41,28 +41,26 @@ void WaveField::setByPhase(const float *targetPhase)
     setPhase<<<gridSize, blockSize>>>(complexWave, targetPhase, rows * cols);
 }
 
-WaveField WaveField::operator+(const WaveField &waveField) const
+WaveField& WaveField::operator+(const WaveField &waveField)
 {
     if ((rows != waveField.getRows()) || (cols != waveField.getColumns())) {
-        throw std::invalid_argument("The sizes of the 2 wave fields do not match!");
+        throw std::runtime_error("The sizes of the 2 wave fields do not match!");
     }
 
-    WaveField newField(waveField);
-    addWaveField<<<gridSize, blockSize>>>(newField.complexWave, complexWave, rows * cols);
+    addWaveField<<<gridSize, blockSize>>>(complexWave, waveField.complexWave, rows * cols);
 
-    return newField;
+    return *this;
 }
 
-WaveField WaveField::operator-(const WaveField &waveField) const
+WaveField& WaveField::operator-(const WaveField &waveField)
 {
     if ((rows != waveField.getRows()) || (cols != waveField.getColumns())) {
-        throw std::invalid_argument("The sizes of the 2 wave fields do not match!");
+        throw std::runtime_error("The sizes of the 2 wave fields do not match!");
     }
 
-    WaveField newField(*this);
-    subWaveField<<<gridSize, blockSize>>>(newField.complexWave, waveField.complexWave, rows * cols);
+    subWaveField<<<gridSize, blockSize>>>(complexWave, waveField.complexWave, rows * cols);
     
-    return newField;
+    return *this;
 }
 
 WaveField &WaveField::operator*(float n)
