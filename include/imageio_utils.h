@@ -43,6 +43,7 @@ namespace ImageUtils
     void removeStripes(cv::Mat &image, int rangeRows = 0, int rangeCols = 0, int windowSize = 5, const std::string &method = "multiplication");
 
     void displayNDArray(F2DArray &images, int rows, int cols, const std::vector<std::string> &imgName);
+    void displayPhase(FArray &phase, int rows, int cols, const std::string &imgName);
 }
 
 template<class T>

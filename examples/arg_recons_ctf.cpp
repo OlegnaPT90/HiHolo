@@ -7,7 +7,7 @@
 
 int main(int argc, char* argv[])
 {
-    argparse::ArgumentParser program("recons_gpu");
+    argparse::ArgumentParser program("holo_recons_ctf");
     program.set_usage_max_line_width(120);
 
     // Add arguments to ArgumentParser object
@@ -25,11 +25,11 @@ int main(int argc, char* argv[])
     
     program.add_argument("--low_freq_lim", "-L")
            .help("regularisation parameters for low frequencies [default: 1e-3]")
-           .scan<'g', float>();
+           .required().scan<'g', float>().default_value(1e-3f);
 
     program.add_argument("--high_freq_lim", "-H")
            .help("regularisation parameters for high frequencies [default: 1e-1]")
-           .scan<'g', float>();
+           .required().scan<'g', float>().default_value(1e-1f);
 
     program.add_argument("--padding_size", "-s")
            .help("size to pad on holograms")
@@ -75,15 +75,9 @@ int main(int argc, char* argv[])
     }
 
     // Read regularisation parameters
-    float lowFreqLim = 1e-3f;
-    float highFreqLim = 1e-1f;
-    if (program.is_used("-L")) {
-       lowFreqLim = program.get<float>("-L");
-    }
-    if (program.is_used("-H")) {
-       highFreqLim = program.get<float>("-H");
-    }
-    
+    float lowFreqLim = program.get<float>("-L");
+    float highFreqLim = program.get<float>("-H");
+       
     auto start = std::chrono::high_resolution_clock::now();    
     FArray phase = PhaseRetrieval::reconstruct_ctf(holograms, numHolograms, imSize, fresnelNumbers, lowFreqLim, highFreqLim, ratio, padSize, padType);
     auto end = std::chrono::high_resolution_clock::now();

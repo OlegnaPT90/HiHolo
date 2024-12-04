@@ -7,7 +7,7 @@
 
 int main(int argc, char* argv[])
 {
-    argparse::ArgumentParser program("recons_gpu");
+    argparse::ArgumentParser program("holo_recons_iter");
     program.set_usage_max_line_width(120);
 
     // Add arguments to ArgumentParser object

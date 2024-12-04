@@ -38,8 +38,8 @@ namespace PhaseRetrieval
 
     // }
 
-    FArray reconstruct_ctf(const FArray &holograms, int numImages, const IntArray &imSize, const F2DArray &fresnelnumbers, float lowFreqLim, float highFreqLim,
-                           float betaDeltaRatio, const IntArray &padSize, CUDAUtils::PaddingType padType)
+    FArray reconstruct_ctf(const FArray &holograms, int numImages, const IntArray &imSize, const F2DArray &fresnelnumbers, float lowFreqLim,
+                           float highFreqLim, float betaDeltaRatio, const IntArray &padSize, CUDAUtils::PaddingType padType)
     {
         // Add GPU environment check
         int deviceCount;
@@ -213,9 +213,10 @@ namespace PhaseRetrieval
         return result;
     }
 
-    F2DArray reconstruct_iter(const FArray &holograms, int numImages, const IntArray &imSize, const F2DArray &fresnelNumbers, int iterations, const FArray &initialPhase,
-                          ProjectionSolver::Algorithm algorithm, const FArray &algoParameters, const IntArray &padSize, float minAmplitude, float maxAmplitude,
-                          PMagnitudeCons::Type projectionType, CUDAPropKernel::Type kernelType, CUDAUtils::PaddingType padType, bool calcError)
+    F2DArray reconstruct_iter(const FArray &holograms, int numImages, const IntArray &imSize, const F2DArray &fresnelNumbers, int iterations, 
+                             const FArray &initialPhase, ProjectionSolver::Algorithm algorithm, const FArray &algoParameters, const IntArray &padSize, 
+                             float minAmplitude, float maxAmplitude, PMagnitudeCons::Type projectionType, CUDAPropKernel::Type kernelType, 
+                             CUDAUtils::PaddingType padType, bool calcError)
     {
         // Add GPU environment check
         int deviceCount;

@@ -244,9 +244,27 @@ void ImageUtils::displayNDArray(F2DArray &images, int rows, int cols, const std:
     for (int i = 0; i < mats.size(); i++) {
         cv::imshow(imgName[i], mats[i]);
     }
-    while (cv::waitKey(1) != 27);    
+
+    while (cv::waitKey(1) != 27);   
 }
 
+void ImageUtils::displayPhase(FArray &phase, int rows, int cols, const std::string &imgName)
+{   
+    // Create OpenCV matrix
+    cv::Mat mat(rows, cols, CV_32F);
+    memcpy(mat.data, phase.data(), rows * cols * sizeof(float));
+    
+    // Normalize to 0-255 range and convert to 8-bit unsigned integer
+    cv::normalize(mat, mat, 0, 255, cv::NORM_MINMAX);
+    mat.convertTo(mat, CV_8U);
+    
+    // Use a fixed window name but display different titles
+    static const std::string windowName = "Phase Display";
+    cv::namedWindow(windowName, cv::WINDOW_AUTOSIZE);
+    cv::setWindowTitle(windowName, imgName);
+    cv::imshow(windowName, mat);
+    cv::waitKey(2000);
+}
 
 // bool IOUtils::readRawData(const std::string &filename, const std::string &datasetName, std::vector<uint16_t> &data, std::vector<hsize_t> &dims)
 // {
