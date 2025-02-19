@@ -16,7 +16,7 @@ struct IterationResult
 class ProjectionSolver
 {   
     public:
-        enum Algorithm{AP, RAAR, HIO, DRAP};     
+        enum Algorithm {AP, RAAR, HIO, DRAP, APWP};     
         typedef std::function<void(ProjectionSolver*)> Method;
 
     private:
@@ -27,6 +27,7 @@ class ProjectionSolver
         F2DArray residual;
         WaveField psi;
         WaveField oldPsi;
+        WaveField probe;
         WaveField PMPsi;
 
         /**
@@ -47,16 +48,19 @@ class ProjectionSolver
         void updateStepHIO();
         void updateStepRAAR();
         void updateStepDRAP();
-
+        void updateStepAPWP();
         // start at 1
         int currentIteration;
         // parameters for RAAR/HIO/DRAP algorithm        
         FArray parameters;
 
     public:
-        ProjectionSolver(Projector *PM, Projector *PS, const WaveField &initialPsi, Algorithm algo, const FArray &algoParameters, bool calError = false);
+        ProjectionSolver(Projector *PM, Projector *PS, const WaveField &initialPsi,
+                         Algorithm algo, const FArray &algoParameters, bool calError = false);
+        ProjectionSolver(Projector *PM, Projector *PS, const WaveField &initialPsi,
+                         const WaveField &initialProbe, bool calError = false);
         IterationResult execute(int iterations);
-        ~ProjectionSolver();
+        ~ProjectionSolver() = default;
 };
 
 #endif

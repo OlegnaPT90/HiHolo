@@ -15,6 +15,13 @@ struct Projection
     float residual;
 };
 
+struct ProbeProjection
+{
+    WaveField projection;
+    WaveField probeProjection;
+    float residual;
+};
+
 struct Reflection
 {
     WaveField projection;
@@ -27,6 +34,7 @@ class Projector
     public:
         Projector() = default;
         virtual Projection project(const WaveField& waveField);
+        virtual ProbeProjection project(const WaveField& waveField, const WaveField &probeField);
         Reflection reflect(const WaveField& waveField);
         virtual ~Projector() = default;
 };
@@ -41,6 +49,7 @@ class PAmplitudeCons: public Projector
     public:
         PAmplitudeCons(float minAmp, float maxAmp): minAmplitude(minAmp), maxAmplitude(maxAmp) {}
         virtual Projection project(const WaveField& psi) override;
+        virtual ProbeProjection project(const WaveField& psi, const WaveField &probeField) override;
         ~PAmplitudeCons();
 };
 
@@ -56,6 +65,7 @@ class PMagnitudeCons: public Projector
         Type type;
         F2DArray fresnelNumbers;
         const float *measurements;
+        const float *p_measurements;
         IntArray imSize;
         bool calculateError;
         std::vector<PropagatorPtr> propagators;
@@ -66,6 +76,8 @@ class PMagnitudeCons: public Projector
 
         cuFloatComplex *complexWave;
         cuFloatComplex *cmp3DWave;
+        cuFloatComplex *probeWave;
+        cuFloatComplex *probe;
         float *amp3DWave;
         float residual;
         // choose function according to different projection methods
@@ -74,11 +86,15 @@ class PMagnitudeCons: public Projector
         void projAveraged();
         void projSequential();
         void projCyclic();
+        void projProbeAveraged();
 
     public:
         PMagnitudeCons(const float *measuredGrams, int numimages, const IntArray &imsize, const std::vector<PropagatorPtr> &props,
                        Type projectionType, bool calcError = false);
+        PMagnitudeCons(const float *measuredGrams, const float *p_measuredGrams, int numimages, const IntArray &imsize,
+                       const std::vector<PropagatorPtr> &props, Type projectionType);
         virtual Projection project(const WaveField& waveField) override;
+        virtual ProbeProjection project(const WaveField& waveField, const WaveField &probeField) override;
         ~PMagnitudeCons();
 };
 

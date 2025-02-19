@@ -6,6 +6,11 @@ Projection Projector::project(const WaveField& waveField)
     return {waveField, FloatInf};
 }
 
+ProbeProjection Projector::project(const WaveField& waveField, const WaveField &probeField)
+{
+    return {waveField, probeField, FloatInf};
+}
+
 // Reflection on object and measurment plane is identical
 Reflection Projector::reflect(const WaveField& psi)
 {
@@ -55,6 +60,11 @@ Projection PAmplitudeCons::project(const WaveField& psi)
     return {updatedPsi, residual};
 }
 
+ProbeProjection PAmplitudeCons::project(const WaveField& psi, const WaveField &probeField)
+{
+    return {psi, probeField, FloatInf};
+}
+
 PAmplitudeCons::~PAmplitudeCons()
 {
     if (targetAmplitude)
@@ -67,23 +77,6 @@ PMagnitudeCons::PMagnitudeCons(const float *measuredGrams, int numimages, const 
                        Type projectionType, bool calcError): measurements(measuredGrams), numImages(numimages), imSize(imsize), propagators(props), 
                        type(projectionType), calculateError(calcError)
 {   
-    // Initialize fresnel propagator(s)
-    // std::cout << "Choosing kernel type: ";
-    // switch (kernelType) {
-    //     case CUDAPropKernel::Fourier:
-    //         std::cout << "Fourier";
-    //         break;
-    //     case CUDAPropKernel::Chirp:
-    //         std::cout << "Chirp";
-    //         break;
-    //     case CUDAPropKernel::ChirpLimited:
-    //         std::cout << "ChirpLimited";
-    //         break;
-    //     default: 
-    //         throw std::invalid_argument("Invalid kernel type!");
-    // }
-    // std::cout << std::endl;
-
     if (type == Averaged) {
         batchSize = numImages;
     } else if (type == Sequential || type == Cyclic) {
@@ -96,14 +89,6 @@ PMagnitudeCons::PMagnitudeCons(const float *measuredGrams, int numimages, const 
                                                 {Cyclic, &PMagnitudeCons::projCyclic}};
     auto iterator = methodMap.find(type);
     calculate = iterator->second;
-    
-    // std::cout << "Choosing projection method: ";
-    // switch (type) {
-    //     case Averaged: std::cout << "Averaged"; break;
-    //     case Sequential: std::cout << "Sequential"; break;
-    //     case Cyclic: std::cout << "Cyclic"; break;
-    // }
-    // std::cout << std::endl;
 
     cudaMalloc(&complexWave, sizeof(cuFloatComplex) * imSize[0] * imSize[1]);
     cudaMalloc(&cmp3DWave, sizeof(cuFloatComplex) * imSize[0] * imSize[1] * batchSize);
@@ -111,6 +96,26 @@ PMagnitudeCons::PMagnitudeCons(const float *measuredGrams, int numimages, const 
 
     blockSize = 1024;
     numBlocks = (imSize[0] * imSize[1] * batchSize + blockSize - 1) / blockSize;
+}
+
+PMagnitudeCons::PMagnitudeCons(const float *measuredGrams, const float *p_measuredGrams, int numimages, const IntArray &imsize, 
+                               const std::vector<PropagatorPtr> &props, Type projectionType): measurements(measuredGrams),
+                               p_measurements(p_measuredGrams), numImages(numimages), imSize(imsize), propagators(props), type(projectionType)
+{
+    if (type != Averaged) {
+        throw std::invalid_argument("Invalid projection computing method!");
+    }
+
+    batchSize = numImages;
+    calculate = &PMagnitudeCons::projProbeAveraged;
+
+    cudaMalloc(&complexWave, sizeof(cuFloatComplex) * imSize[0] * imSize[1]);
+    cudaMalloc(&cmp3DWave, sizeof(cuFloatComplex) * imSize[0] * imSize[1] * batchSize);
+    cudaMalloc(&probeWave, sizeof(cuFloatComplex) * imSize[0] * imSize[1]);
+    cudaMalloc(&probe, sizeof(cuFloatComplex) * imSize[0] * imSize[1]);
+    cudaMalloc(&amp3DWave, sizeof(float) * imSize[0] * imSize[1] * batchSize);
+
+    blockSize = 1024;
 }
 
 void PMagnitudeCons::projectStep(const float *measuredGrams, const PropagatorPtr &prop)
@@ -133,6 +138,33 @@ void PMagnitudeCons::projectStep(const float *measuredGrams, const PropagatorPtr
 
     limitAmplitude<<<numBlocks, blockSize>>>(cmp3DWave, amp3DWave, measuredGrams, imSize[0] * imSize[1] * batchSize);
     prop->backPropagate(cmp3DWave, complexWave);
+}
+
+void PMagnitudeCons::projProbeAveraged()
+{
+    int numBlocks1 = (imSize[0] * imSize[1] + blockSize - 1) / blockSize;
+    int numBlocks2 = (imSize[0] * imSize[1] * batchSize + blockSize - 1) / blockSize;
+
+    numBlocks = numBlocks1;
+    multiplyWaveField<<<numBlocks, blockSize>>>(probeWave, complexWave, probe, imSize[0] * imSize[1]);
+    propagators[0]->propagate(probeWave, cmp3DWave);
+
+    numBlocks = numBlocks2;
+    limitAmplitude<<<numBlocks, blockSize>>>(cmp3DWave, measurements, imSize[0] * imSize[1] * batchSize);
+    propagators[0]->backPropagate(cmp3DWave, probeWave);
+
+    numBlocks = numBlocks1;
+    scaleComplexData<<<numBlocks, blockSize>>>(probeWave, imSize[0] * imSize[1], 1.0f / batchSize);
+    updateDM<<<numBlocks, blockSize>>>(probe, probeWave, complexWave, imSize[0] * imSize[1]);
+    propagators[0]->propagate(probe, cmp3DWave);
+
+    numBlocks = numBlocks2;
+    limitAmplitude<<<numBlocks, blockSize>>>(cmp3DWave, p_measurements, imSize[0] * imSize[1] * batchSize);
+    propagators[0]->backPropagate(cmp3DWave, probe);
+
+    numBlocks = numBlocks1;
+    scaleComplexData<<<numBlocks, blockSize>>>(probe, imSize[0] * imSize[1], 1.0f / batchSize);
+    updateDM<<<numBlocks, blockSize>>>(complexWave, probeWave, probe, imSize[0] * imSize[1]);
 }
 
 void PMagnitudeCons::projAveraged()
@@ -164,8 +196,25 @@ Projection PMagnitudeCons::project(const WaveField &waveField)
     return {newField, residual};
 }
 
-PMagnitudeCons::~PMagnitudeCons() {
+ProbeProjection PMagnitudeCons::project(const WaveField &waveField, const WaveField &probeField)
+{
+    waveField.getComplexWave(complexWave);
+    probeField.getComplexWave(probe);
+    calculate(this);
+
+    WaveField newField(imSize[0], imSize[1], complexWave);
+    WaveField newProbe(imSize[0], imSize[1], probe);
+    return {newField, newProbe, residual};
+}
+
+PMagnitudeCons::~PMagnitudeCons()
+{
     cudaFree(complexWave);
     cudaFree(cmp3DWave);
     cudaFree(amp3DWave);
+
+    if (p_measurements) {
+        cudaFree(probeWave);
+        cudaFree(probe);
+    }
 }

@@ -18,7 +18,8 @@ class WaveField
     public:
         WaveField(int in_rows, int in_cols, const cuFloatComplex *cmpWave);
         WaveField(const WaveField &waveField);
-        ~WaveField() {cudaFree(complexWave);}
+        WaveField() {complexWave = nullptr;}
+        ~WaveField() {if (complexWave) cudaFree(complexWave);}
         void getAmplitude(float *amplitude) const;
         void getPhase(float *phase) const;
         int getRows() const {return rows;}

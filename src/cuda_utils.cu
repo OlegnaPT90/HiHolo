@@ -129,6 +129,21 @@ __global__ void limitAmplitude(cuFloatComplex *complexWave, const float *amplitu
     }
 }
 
+__global__ void limitAmplitude(cuFloatComplex *complexWave, const float *targetAmplitude, int numel)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        float amplitude = hypotf(complexWave[idx].x, complexWave[idx].y);
+        if (amplitude >= 1e-10) {
+            float scale = targetAmplitude[idx] / amplitude;
+            complexWave[idx].x *= scale;
+            complexWave[idx].y *= scale;
+        } else {
+            complexWave[idx] = make_cuFloatComplex(targetAmplitude[idx], 0.0f);
+        }
+    }
+}
+
 __global__ void adjustAmplitude(float *amplitude, float maxAmplitude, float minAmplitude, int numel)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -142,7 +157,7 @@ __global__ void adjustAmplitude(float *amplitude, float maxAmplitude, float minA
     }
 }
 
-__global__ void sqrtAmplitude(float *amplitude, int numel)
+__global__ void sqrtIntensity(float *amplitude, int numel)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < numel) {
@@ -166,12 +181,29 @@ __global__ void subWaveField(cuFloatComplex *complexWave, const cuFloatComplex *
     }
 }
 
+__global__ void multiplyWaveField(cuFloatComplex *result, const cuFloatComplex *wf1, const cuFloatComplex *wf2, int numel)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        result[idx] = cuCmulf(wf1[idx], wf2[idx]);
+    }
+}
+
 __global__ void reflectWaveField(cuFloatComplex *reflectedWave, const cuFloatComplex *waveField, int numel)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < numel) {
         cuFloatComplex tmp = make_cuFloatComplex(2.0f * reflectedWave[idx].x, 2.0f * reflectedWave[idx].y);
         reflectedWave[idx] = cuCsubf(tmp, waveField[idx]);
+    }
+}
+
+__global__ void updateDM(cuFloatComplex *probe, const cuFloatComplex *probeWave, const cuFloatComplex *complexWave, int numel)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        float intensity = complexWave[idx].x * complexWave[idx].x + complexWave[idx].y * complexWave[idx].y;
+        probe[idx] = cuCdivf(cuCmulf(probeWave[idx], cuConjf(complexWave[idx])), make_cuFloatComplex(intensity, 0.0f));
     }
 }
 
@@ -573,6 +605,7 @@ void CUDAUtils::padByReplicate(float* matrix, float* matrix_new, int rows, int c
     // Copy the original matrix to the center of the new matrix
     nppiCopyReplicateBorder_32f_C1R_Ctx(reinterpret_cast<const Npp32f*>(matrix), srcStep, srcSize, reinterpret_cast<Npp32f*>(matrix_new), dstStep, dstSize, padRows, padCols, streamCtx);
 }
+
 void CUDAUtils::padByFadeout(float* matrix, float* matrix_new, int rows, int cols, int padRows, int padCols, cudaStream_t stream)
 {
     // Calculate the mean of the original matrix as the padding value

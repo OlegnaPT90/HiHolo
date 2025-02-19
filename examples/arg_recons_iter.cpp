@@ -11,24 +11,25 @@ int main(int argc, char* argv[])
     program.set_usage_max_line_width(120);
 
     // Add arguments to ArgumentParser object
-    program.add_argument("--input_files", "-I")
-           .help("input hdf5 file and dataset")
+    program.add_argument("--input_file", "-I")
+           .help("input hdf5 file and dataset for holograms")
            .required().nargs(2);
 
     program.add_argument("--fresnel_numbers", "-f")
            .help("list of fresnel numbers corresponding to holograms")
-           .required().nargs(argparse::nargs_pattern::at_least_one).scan<'g', float>();
+           .required().nargs(argparse::nargs_pattern::at_least_one)
+           .scan<'g', float>();
 
     program.add_argument("--iterations", "-i")
            .help("the number of iterations")
            .required().scan<'i', int>().default_value(200);
 
-    program.add_argument("--guess_phase_files", "-g")
+    program.add_argument("--guess_phase_file", "-g")
            .help("hdf5 file and dataset of initial guess phase")
            .nargs(2);
 
     program.add_argument("--algorithm", "-a")
-           .help("phase retrieval algorithm [0: ap, 1: raar, 2: hio, 3: drap]")
+           .help("phase retrieval algorithm [0:ap, 1:raar, 2:hio, 3:drap, 4:apwp]")
            .required().default_value(0).scan<'i', int>();
 
     program.add_argument("--algorithm_parameters", "-P")
@@ -36,20 +37,28 @@ int main(int argc, char* argv[])
                  "default for raar: 0.75, 0.99, 20")
            .nargs(1, 3).scan<'g', float>();
 
-    program.add_argument("--padding_size", "-s")
-           .help("size to pad on holograms")
-           .nargs(2).scan<'i', int>();
-    
     program.add_argument("--amplitude_limits", "-l")
            .help("minimum and maximum amplitude constraints")
            .nargs(2).scan<'g', float>();
 
+    program.add_argument("--padding_size", "-s")
+           .help("size to pad on holograms")
+           .nargs(2).scan<'i', int>();
+
+    program.add_argument("--input_probe_file", "-ip")
+           .help("input hdf5 file and dataset for probes")
+           .nargs(2);
+
+    program.add_argument("--guess_probe_phase", "-gp")
+           .help("hdf5 file and dataset of initial guess phase for probe")
+           .nargs(2);
+
     program.add_argument("--projection_type", "-t")
-           .help("projection computing type [0: averaged, 1: sequential, 2: cyclic]")
+           .help("projection computing type [0:averaged, 1:sequential, 2:cyclic]")
            .required().default_value(0).scan<'i', int>();
 
     program.add_argument("--kernel_method", "-m")
-           .help("propagation kernel method [0: fourier, 1: chirp, 2: chirplimited]")
+           .help("propagation kernel method [0:fourier, 1:chirp, 2:chirplimited]")
            .required().default_value(0).scan<'i', int>();
     
     program.add_argument("--error_calculation", "-e")
@@ -57,7 +66,7 @@ int main(int argc, char* argv[])
            .default_value(false).implicit_value(true);
 
     program.add_argument("--padding_type", "-p")
-           .help("type of padding matrix around [0: constant, 1: replicate, 2: fadeout]")
+           .help("type of padding matrix around [0:constant, 1:replicate, 2:fadeout]")
            .default_value(1).scan<'i', int>();
 
     try {
@@ -73,7 +82,7 @@ int main(int argc, char* argv[])
     std::vector<hsize_t> dims;
     std::vector<std::string> inputs = program.get<std::vector<std::string>>("-I");
     IOUtils::readProcessedGrams(inputs[0], inputs[1], holograms, dims);
-    if (holograms.empty() || dims.empty() || dims.size() != 3) {
+    if (holograms.empty() || dims.size() != 3) {
        throw std::runtime_error("Invalid holograms or dimensions!");
     }
     
@@ -82,6 +91,7 @@ int main(int argc, char* argv[])
     int cols = static_cast<int>(dims[2]);
     IntArray imSize {rows, cols};
 
+    // Process fresnel numbers
     auto fresnel_input = program.get<FArray>("-f");
     F2DArray fresnelNumbers;
     for (const auto &group: fresnel_input) {
@@ -92,9 +102,13 @@ int main(int argc, char* argv[])
 
     // Read initial phase and image size from user inputs
     FArray initialPhase;
+    std::vector<std::string> input_phase;
     if (program.is_used("-g")) {
-       std::vector<std::string> input_phase = program.get<std::vector<std::string>>("-g");
+       input_phase = program.get<std::vector<std::string>>("-g");
        IOUtils::readPhasegrams(input_phase[0], input_phase[1], initialPhase, dims);
+       if (initialPhase.empty() || dims.size() != 2) {
+            throw std::runtime_error("Invalid initial phase or dimensions!");
+       }
     }
 
     auto algorithm = static_cast<ProjectionSolver::Algorithm>(program.get<int>("-a"));
@@ -110,35 +124,58 @@ int main(int argc, char* argv[])
        parameters = {0.7};
     }
 
-    IntArray padSize;
-    CUDAUtils::PaddingType padType;
-
-    if (program.is_used("-s")) {
-        padSize = program.get<IntArray>("-s");
-        padType = static_cast<CUDAUtils::PaddingType>(program.get<int>("-p"));
-    }
-
     FArray ampLimits {0, FloatInf};
     if (program.is_used("-l")) {
        ampLimits = program.get<FArray>("-l");
     }
 
+    // Process padding parameters
+    IntArray padSize;
+    CUDAUtils::PaddingType padType;
+    if (program.is_used("-s")) {
+        padSize = program.get<IntArray>("-s");
+        padType = static_cast<CUDAUtils::PaddingType>(program.get<int>("-p"));
+    }
+
+    // Process probe field parameters
+    FArray probeGrams, initProbePhase;
+    if (algorithm == ProjectionSolver::Algorithm::APWP) {
+       if (!program.is_used("-ip")) {
+           throw std::runtime_error("Probe field is required for APWP algorithm!");
+       }
+
+       inputs = program.get<std::vector<std::string>>("-ip");
+       IOUtils::readProcessedGrams(inputs[0], inputs[1], probeGrams, dims);
+       if (probeGrams.empty() || dims.size() != 3) {
+           throw std::runtime_error("Invalid probe grams or dimensions!");
+       }
+
+       if (program.is_used("-gp")) {
+           input_phase = program.get<std::vector<std::string>>("-gp");
+           IOUtils::readPhasegrams(input_phase[0], input_phase[1], initProbePhase, dims);
+           if (initProbePhase.empty() || dims.size() != 2) {
+                throw std::runtime_error("Invalid initial probe phase or dimensions!");
+           }
+       }
+    }
+    
     auto projectionType = static_cast<PMagnitudeCons::Type>(program.get<int>("-t"));
     auto kernelMethod = static_cast<CUDAPropKernel::Type>(program.get<int>("-m"));
     bool calcError = program.get<bool>("-e") ? true : false;
 
     auto start = std::chrono::high_resolution_clock::now();
     
-    F2DArray result = PhaseRetrieval::reconstruct_iter(holograms, numHolograms, imSize, fresnelNumbers, iterations, initialPhase, algorithm,
-                                     parameters, padSize, ampLimits[0], ampLimits[1], projectionType, kernelMethod, padType, calcError);
+    F2DArray result = PhaseRetrieval::reconstruct_iter(holograms, numHolograms, imSize, fresnelNumbers, iterations, initialPhase,
+                                                       algorithm, parameters, padSize, ampLimits[0], ampLimits[1], projectionType,
+                                                       kernelMethod, padType, probeGrams, initProbePhase, calcError);
         
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Elapsed time: " << duration.count() << " milliseconds" << std::endl;
 
     // Display the 2 results and save to HDF5 file
-    // OUtils::savePhasegrams("/home/hug/Downloads/HoloTomo_Data/reconsfile.h5", "phasedata", result[0], imSize[0], imSize[1]);
-    // ImageUtils::displayNDArray(result, imSize[0], imSize[1], std::vector<std::string>{"phase", "amplitude"});
+    // IOUtils::savePhasegrams("/home/hug/Downloads/HoloTomo_Data/reconsfile.h5", "phasedata", result[0], imSize[0], imSize[1]);
+    ImageUtils::displayNDArray(result, imSize[0], imSize[1], std::vector<std::string>{"phase", "amplitude"});
 
     return 0;
 }

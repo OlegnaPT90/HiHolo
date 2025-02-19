@@ -94,12 +94,15 @@ __global__ void setPhase(cuFloatComplex *complexWave, const float *targetPhase, 
 
 __global__ void addWaveField(cuFloatComplex *complexWave, const cuFloatComplex *waveField, int numel);
 __global__ void subWaveField(cuFloatComplex *complexWave, const cuFloatComplex *waveField, int numel);
+__global__ void multiplyWaveField(cuFloatComplex *result, const cuFloatComplex *wf1, const cuFloatComplex *wf2, int numel);
 __global__ void reflectWaveField(cuFloatComplex *reflectedWave, const cuFloatComplex *waveField, int numel);
 
 __global__ void adjustAmplitude(float *amplitude, float maxAmplitude, float minAmplitude, int numel);
 __global__ void limitAmplitude(cuFloatComplex *complexWave, const float *amplitude, const float *targetAmplitude, int numel);
+__global__ void limitAmplitude(cuFloatComplex *complexWave, const float *targetAmplitude, int numel);
+__global__ void sqrtIntensity(float *amplitude, int numel);
 
-__global__ void sqrtAmplitude(float *amplitude, int numel);
+__global__ void updateDM(cuFloatComplex *probe, const cuFloatComplex *probeWave, const cuFloatComplex *complexWave, int numel);
 
 // Initialize data with a given value
 template <typename T>

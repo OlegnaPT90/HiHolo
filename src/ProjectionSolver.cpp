@@ -5,8 +5,8 @@ const float ProjectionSolver::terminateThreshold = -7.2;
 const int ProjectionSolver::terminateIterations = 100;
 
 ProjectionSolver::ProjectionSolver(Projector *PM, Projector *PS, const WaveField &initialPsi, Algorithm algo, const FArray &algoParameters,
-                                   bool calError): projMagnitude(PM), projObject(PS), algorithm(algo), parameters(algoParameters), psi(initialPsi),
-                                   calculateError(calError), oldPsi(initialPsi), PMPsi(initialPsi)
+                                   bool calError): projMagnitude(PM), projObject(PS), algorithm(algo), parameters(algoParameters),
+                                   psi(initialPsi), calculateError(calError), oldPsi(initialPsi), PMPsi(initialPsi)
 {    
     std::unordered_map<Algorithm, Method> methodMap {{AP, &ProjectionSolver::updateStepAP}, {RAAR, &ProjectionSolver::updateStepRAAR}, 
                                                      {HIO, &ProjectionSolver::updateStepHIO}, {DRAP, &ProjectionSolver::updateStepDRAP}};
@@ -24,7 +24,17 @@ ProjectionSolver::ProjectionSolver(Projector *PM, Projector *PS, const WaveField
     residual = F2DArray(3, FArray());
 }
 
-ProjectionSolver::~ProjectionSolver() {}
+ProjectionSolver::ProjectionSolver(Projector *PM, Projector *PS, const WaveField &initialPsi, const WaveField &initialProbe,
+                                   bool calError): projMagnitude(PM), projObject(PS), algorithm(APWP), psi(initialPsi),
+                                   probe(initialProbe), calculateError(calError), oldPsi(initialPsi), PMPsi(initialPsi)
+{
+    update = &ProjectionSolver::updateStepAPWP;
+    currentIteration = 1;
+    isConverged = false;
+    /* error measurements
+       initialize the errors */
+    residual = F2DArray(3, FArray());
+}
 
 IterationResult ProjectionSolver::execute(int iterations)
 {   
@@ -93,6 +103,17 @@ void ProjectionSolver::updateStepAP()
 
     setResidual(2, magnitudeResult.residual);
     PMPsi = magnitudeResult.projection;
+    psi = objectResult.projection;
+}
+
+void ProjectionSolver::updateStepAPWP()
+{
+    ProbeProjection magnitudeResult = projMagnitude->project(psi, probe);
+    Projection objectResult = projObject->project(magnitudeResult.projection);
+
+    setResidual(2, magnitudeResult.residual);
+    PMPsi = magnitudeResult.projection;
+    probe = magnitudeResult.probeProjection;
     psi = objectResult.projection;
 }
 
