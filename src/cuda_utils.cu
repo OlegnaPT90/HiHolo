@@ -21,10 +21,6 @@ void CUFFTUtils::fft_fwd(cuFloatComplex *complexWave)
 void CUFFTUtils::fft_bwd(cuFloatComplex *complexWave)
 {
     cufftExecC2C(plan, complexWave, complexWave, CUFFT_INVERSE);
-    float scale = 1.0f / numel;
-    int blockSize = 1024;
-    int numBlocks = (numel + blockSize - 1) / blockSize;
-    scaleComplexData<<<numBlocks, blockSize>>>(complexWave, numel, scale);
 }
 
 void CUFFTUtils::fft_fwd_batch(cuFloatComplex *complexWave)
@@ -35,10 +31,6 @@ void CUFFTUtils::fft_fwd_batch(cuFloatComplex *complexWave)
 void CUFFTUtils::fft_bwd_batch(cuFloatComplex *complexWave)
 {
     cufftExecC2C(plan_batch, complexWave, complexWave, CUFFT_INVERSE);
-    float scale = 1.0f / numel;
-    int blockSize = 1024;
-    int numBlocks = (numel * batchSize + blockSize - 1) / blockSize;
-    scaleComplexData<<<numBlocks, blockSize>>>(complexWave, numel * batchSize, scale);
 }
 
 CUFFTUtils::~CUFFTUtils()
