@@ -20,6 +20,25 @@ std::vector<cv::Mat> ImageUtils::convertVecToMats(const std::vector<uint16_t> &d
     return mats;
 }
 
+void ImageUtils::convertVecToImgs(float *data, std::vector<itk::simple::Image> &images, int rows, int cols)
+{
+    std::vector<unsigned int> size = {static_cast<unsigned int>(cols), static_cast<unsigned int>(rows)};
+
+    for (int i = 0; i < images.size(); i++) {
+        // 使用ImportImageFilter创建图像
+        images[i] = itk::simple::ImportAsFloat(data + i * rows * cols, size, std::vector<double>(2, 1.0));
+    }
+}
+
+void ImageUtils::convertImgsToVec(const std::vector<itk::simple::Image> &images, float *data, int rows, int cols)
+{
+    for (int i = 0; i < images.size(); i++) {
+        auto buffer = images[i].GetBufferAsFloat();
+        std::memcpy(data + i * rows * cols, buffer, rows * cols * sizeof(float));
+    }
+}
+
+
 // D2DArray ImageUtils::convertMatsToVec(const std::vector<cv::Mat> &mats)
 // {
 //     D2DArray grams;
@@ -83,27 +102,6 @@ void ImageUtils::removeOutliers(cv::Mat &originalImg, int kernelSize, float thre
     filteredImg.copyTo(originalImg, biasedPixels);
 }
 
-cv::Mat ImageUtils::xcorr2(const cv::Mat& X, const cv::Mat& H)
-{
-    // Flip the kernel for cross-correlation
-    cv::Mat H_flipped;
-    cv::flip(H, H_flipped, -1);
-
-    // Calculate the output size
-    int rows = X.rows + H.rows - 1;
-    int cols = X.cols + H.cols - 1;
-
-    // Pad the input matrix
-    cv::Mat X_padded;
-    cv::copyMakeBorder(X, X_padded, H.rows - 1, H.rows - 1, H.cols - 1, H.cols - 1, cv::BORDER_CONSTANT, cv::Scalar::all(0));
-
-    // Perform the filtering
-    cv::Mat C;
-    cv::filter2D(X_padded, C, CV_32F, H_flipped, cv::Point(-1, -1), 0, cv::BORDER_CONSTANT);
-
-    return C;
-}
-
 cv::Mat ImageUtils::filterImage(const cv::Mat &image, int kernelSize, float stddev)
 {
     cv::Mat filteredImage;
@@ -115,68 +113,6 @@ cv::Mat ImageUtils::filterImage(const cv::Mat &image, int kernelSize, float stdd
     cv::medianBlur(filteredImage, filteredImage, kernelSize);
 
     return filteredImage;
-}
-
-cv::Point2f ImageUtils::alignImages(cv::Mat &imAli, const cv::Mat &imRef, bool applyFilter, int kernelSize)
-{
-    if (imAli.size() != imRef.size()) {
-        throw std::invalid_argument("The sizes of 2 images do not match!");
-    }
-
-    // Filter the 2 images before alignment
-    cv::Mat filteredImAli = imAli.clone();
-    cv::Mat filteredImRef = imRef.clone();
-
-    if (applyFilter) {
-        filteredImAli = filterImage(filteredImAli, kernelSize);
-        filteredImRef = filterImage(filteredImRef, kernelSize);
-    }
-
-    // Computational cross correlation and finde the location of max value
-    cv::Mat corrMatrix = xcorr2(filteredImAli, filteredImRef);
-    std::cout << corrMatrix.size << std::endl;
-    double minVal, maxVal;
-    cv::Point minLoc, maxLoc;
-    cv::minMaxLoc(corrMatrix, &minVal, &maxVal, &minLoc, &maxLoc);
-    
-    // cv::Point2i center(filteredImAli.cols - 1, filteredImAli.rows - 1);
-    // Calculate translation and transform
-    cv::Point2f shift(maxLoc.x, maxLoc.y);
-    cv::Mat transMatrix = (cv::Mat_<float>(2, 3) << 1, 0, shift.x, 0, 1, shift.y);
-    cv::warpAffine(imAli, imAli, transMatrix, imAli.size(), cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar::all(0));
-
-    return shift;
-}
-
-cv::Point2f ImageUtils::alignImages01(cv::Mat &imAli, const cv::Mat &imRef, bool applyFilter)
-{
-    if (imAli.size() != imRef.size()) {
-        throw std::invalid_argument("The sizes of 2 images do not match!");
-    }
-
-    // Filter the 2 images before alignment
-    cv::Mat filteredImAli = imAli.clone();
-    cv::Mat filteredImRef = imRef.clone();
-
-    int padSize = imRef.rows / 2;
-    cv::copyMakeBorder(filteredImRef, filteredImRef, padSize, padSize, padSize, padSize, cv::BORDER_CONSTANT, cv::Scalar(0));
-    if (applyFilter) {
-        filteredImAli = filterImage(filteredImAli);
-        filteredImRef = filterImage(filteredImRef);
-    }
-
-    cv::Mat corrMatrix;
-    cv::matchTemplate(filteredImRef, filteredImAli, corrMatrix, cv::TM_CCORR_NORMED);
-    
-    double minVal, maxVal;
-    cv::Point minLoc, maxLoc;
-    cv::minMaxLoc(corrMatrix, &minVal, &maxVal, &minLoc, &maxLoc);
-
-    cv::Point2f shift(maxLoc.x - padSize, maxLoc.y - padSize);
-    cv::Mat transMatrix = (cv::Mat_<float>(2, 3) << 1, 0, shift.x, 0, 1, shift.y);
-    cv::warpAffine(imAli, imAli, transMatrix, imAli.size());
-
-    return shift;
 }
 
 cv::Mat ImageUtils::genCorrMatrix(const cv::Mat &image, int range, int windowSize)
@@ -226,6 +162,38 @@ void ImageUtils::removeStripes(cv::Mat &image, int rangeRows, int rangeCols, int
         throw std::invalid_argument("Invalid removal method!");
     }
 
+}
+
+itk::simple::Transform ImageUtils::registerImage(const itk::simple::Image &fixedImage, itk::simple::Image &movingImage)
+{
+    try {
+        // 创建配准器
+        itk::simple::ImageRegistrationMethod registration;
+        
+        // 设置配准器参数
+        registration.SetMetricAsCorrelation();
+        registration.SetOptimizerAsGradientDescent(1.0, 100, 1e-6, 10, registration.EachIteration);
+        registration.SetOptimizerScalesFromPhysicalShift();
+        
+        registration.SetInitialTransform(itk::simple::TranslationTransform(fixedImage.GetDimension()));
+        registration.SetInterpolator(itk::simple::sitkLinear);
+
+        // 执行配准
+        itk::simple::Transform transform = registration.Execute(fixedImage, movingImage);
+        std::vector<double> parameters = transform.GetParameters();
+        std::vector<unsigned int> padBound = {static_cast<unsigned int>(std::round(std::abs(parameters[0]))),
+                                              static_cast<unsigned int>(std::round(std::abs(parameters[1])))};
+        movingImage = itk::simple::ZeroFluxNeumannPad(movingImage, padBound, padBound);
+
+        movingImage = itk::simple::Resample(movingImage, transform, itk::simple::sitkNearestNeighbor, 0.0, movingImage.GetPixelID());
+        IntArray index = {static_cast<int>(padBound[0]), static_cast<int>(padBound[1])};
+        movingImage = itk::simple::Extract(movingImage, fixedImage.GetSize(), index);
+
+        return transform;
+    } catch (const std::exception &e) {
+        std::cerr << "Error registering image: " << e.what() << std::endl;
+        return itk::simple::Transform();
+    }
 }
 
 void ImageUtils::displayNDArray(F2DArray &images, int rows, int cols, const std::vector<std::string> &imgName)
@@ -394,6 +362,25 @@ bool IOUtils::savePhasegrams(const std::string &filename, const std::string &dat
     
 }
 
+bool IOUtils::save3DGrams(const std::string &filename, const std::string &datasetName, const FArray &registeredGrams, int numImages, int rows, int cols)
+{
+    try {
+        // Create file and data space
+        H5::H5File file(filename, H5F_ACC_TRUNC);
+        hsize_t dims[3] {numImages, rows, cols};
+        H5::DataSpace dataspace(3, dims);
+
+        // Create dataset and write data
+        H5::DataSet dataset = file.createDataSet(datasetName, H5::PredType::NATIVE_FLOAT, dataspace);
+        dataset.write(registeredGrams.data(), H5::PredType::NATIVE_FLOAT);
+
+        return true;
+    } catch(H5::Exception &error) {
+        std::cerr << "Error writing dataset: " << error.getDetailMsg() << std::endl;
+        return false;
+    }
+}
+
 // bool IOUtils::saveProcessedGrams(const std::string &filename, const std::string &datasetName, const FArray &processedGrams, int numImages, int rows, int cols)
 // {
 //     // Converts 2-dimensional vector to 1-dimensional vector
@@ -448,6 +435,23 @@ bool IOUtils::read4DimData(const std::string &filename, const std::string &datas
     }
 }
 
+bool IOUtils::createFileDataset(const std::string &filename, const std::string &datasetName, const std::vector<hsize_t> &dims)
+{
+    try {
+        // 创建HDF5文件
+        H5::H5File file(filename, H5F_ACC_TRUNC);
+        // 创建数据空间
+        H5::DataSpace dataspace(dims.size(), dims.data());
+        // 创建数据集
+        H5::DataSet dataset = file.createDataSet(datasetName, H5::PredType::NATIVE_FLOAT, dataspace);
+        
+        return true;
+    } catch(H5::Exception &error) {
+        std::cerr << "Error creating dataset: " << error.getDetailMsg() << std::endl;
+        return false;
+    }
+}
+
 bool IOUtils::write3DimData(const std::string &filename, const std::string &datasetName, const FArray &data, 
                             const std::vector<hsize_t> &dims, hsize_t offset)
 {
@@ -478,6 +482,31 @@ bool IOUtils::write3DimData(const std::string &filename, const std::string &data
         dataspace.selectHyperslab(H5S_SELECT_SET, count_, offset_);
         
         H5::DataSpace memspace(3, count_);        
+        dataset.write(data.data(), H5::PredType::NATIVE_FLOAT, memspace, dataspace);
+        
+        return true;
+    } catch(H5::Exception &error) {
+        std::cerr << "Error writing dataset: " << error.getDetailMsg() << std::endl;
+        return false;
+    }
+}
+
+bool IOUtils::write4DimData(const std::string &filename, const std::string &datasetName, const FArray &data, 
+                            const std::vector<hsize_t> &dims, hsize_t offset)
+{
+    try {
+        // 尝试打开文件，如果不存在则创建
+        H5::H5File file = H5::H5File(filename, H5F_ACC_RDWR);        
+        H5::DataSet dataset = file.openDataSet(datasetName);
+        
+        // 设置写入区域，一次写入一批数据
+        hsize_t offset_[4] = {offset, 0, 0, 0};
+        hsize_t count_[4] = {data.size() / (dims[1] * dims[2] * dims[3]), dims[1], dims[2], dims[3]};
+        
+        H5::DataSpace dataspace = dataset.getSpace();
+        dataspace.selectHyperslab(H5S_SELECT_SET, count_, offset_);
+        
+        H5::DataSpace memspace(4, count_);        
         dataset.write(data.data(), H5::PredType::NATIVE_FLOAT, memspace, dataspace);
         
         return true;

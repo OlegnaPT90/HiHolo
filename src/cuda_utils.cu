@@ -462,6 +462,14 @@ __global__ void addFloatData(float* data, const float* newData, int numel)
     }
 }
 
+__global__ void divideFloatData(float* data, const float* newData, int numel)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        data[idx] /= newData[idx];
+    }
+}
+
 __global__ void complexDivideFloat(cuFloatComplex* data, const float* newData, int numel)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;

@@ -315,6 +315,7 @@ namespace PhaseRetrieval
         // Construct projector on measured holograms
         int blockSize = 1024;
         int gridSize = (newSize[0] * newSize[1] * numImages + blockSize - 1) / blockSize;
+        // divideFloatData<<<gridSize, blockSize>>>(holograms_gpu, holoprobes_gpu, newSize[0] * newSize[1] * numImages);
         sqrtIntensity<<<gridSize, blockSize>>>(holograms_gpu, newSize[0] * newSize[1] * numImages);
         if (algorithm == ProjectionSolver::APWP) {
             sqrtIntensity<<<gridSize, blockSize>>>(holoprobes_gpu, newSize[0] * newSize[1] * numImages);

@@ -128,6 +128,7 @@ __global__ void computeErfcWeights(float* data, float param, int numel);
 __global__ void genRegWeights(float* data, float lim1, float lim2, int numel);
 
 __global__ void addFloatData(float* data, const float* newData, int numel);
+__global__ void divideFloatData(float* data, const float* newData, int numel);
 __global__ void complexDivideFloat(cuFloatComplex* data, const float* newData, int numel);
 __global__ void extractRealData(const cuFloatComplex* data, float* realData, int numel);
 
