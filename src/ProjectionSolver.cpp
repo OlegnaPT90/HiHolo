@@ -8,6 +8,7 @@ ProjectionSolver::ProjectionSolver(Projector *PM, Projector *PS, const WaveField
                                    bool calError): projMagnitude(PM), projObject(PS), algorithm(algo), parameters(algoParameters),
                                    psi(initialPsi), calculateError(calError), oldPsi(initialPsi), PMPsi(initialPsi)
 {    
+    // Map holographic algorithm to corresponding update method
     std::unordered_map<Algorithm, Method> methodMap {{AP, &ProjectionSolver::updateStepAP}, {RAAR, &ProjectionSolver::updateStepRAAR}, 
                                                      {HIO, &ProjectionSolver::updateStepHIO}, {DRAP, &ProjectionSolver::updateStepDRAP}};
     auto iterator = methodMap.find(algorithm);
@@ -47,6 +48,7 @@ IterationResult ProjectionSolver::execute(int iterations)
             residual[i].resize(iterations, FloatInf);
     }
     
+    // Iterate until convergence or maximum iterations
     while (!isConverged && currentIteration < iterations)
     {   
         // std::cout << "Iteration " << currentIteration << std::endl;
@@ -96,6 +98,7 @@ IterationResult ProjectionSolver::execute(int iterations)
     return {psi, residual};
 }
 
+/* Alternating Projection Algorithm */
 void ProjectionSolver::updateStepAP()
 {   
     Projection magnitudeResult = projMagnitude->project(psi);
@@ -106,6 +109,7 @@ void ProjectionSolver::updateStepAP()
     psi = objectResult.projection;
 }
 
+/* Alternating Projection Algorithm with Probe */
 void ProjectionSolver::updateStepAPWP()
 {
     ProbeProjection magnitudeResult = projMagnitude->project(psi, probe);
@@ -117,8 +121,10 @@ void ProjectionSolver::updateStepAPWP()
     psi = objectResult.projection;
 }
 
+/* Relaxed Averaged Alternating Reflections Algorithm */
 void ProjectionSolver::updateStepRAAR()
 {
+    // Check parameters size and read parameters
     if (parameters.size() != 3) {
         throw std::invalid_argument("Incorrect parameter setting!");
     }
@@ -158,7 +164,7 @@ void ProjectionSolver::updateStepHIO()
     ((psi + objectResult.reflection) + magnitudeResult.projection * (1.0f - b)) * 0.5f;
 }
 
-/* Dougles-Rachford Alternating Projections */
+/* Dougles-Rachford Alternating Projections Algorithm */
 void ProjectionSolver::updateStepDRAP()
 {
     if (parameters.size() != 1) {

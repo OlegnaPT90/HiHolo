@@ -167,18 +167,21 @@ void ImageUtils::removeStripes(cv::Mat &image, int rangeRows, int rangeCols, int
 itk::simple::Transform ImageUtils::registerImage(const itk::simple::Image &fixedImage, itk::simple::Image &movingImage)
 {
     try {
-        // 创建配准器
+        // Create registration method for image alignment
         itk::simple::ImageRegistrationMethod registration;
         
-        // 设置配准器参数
+        // Configure registration parameters:
+        // - Use correlation metric for similarity measure
+        // - Gradient descent optimizer with specified parameters
         registration.SetMetricAsCorrelation();
         registration.SetOptimizerAsGradientDescent(1, 100, 1e-3, 15, registration.EachIteration);
         registration.SetOptimizerScalesFromPhysicalShift();
         
+        // Set initial translation transform and linear interpolation
         registration.SetInitialTransform(itk::simple::TranslationTransform(fixedImage.GetDimension()));
         registration.SetInterpolator(itk::simple::sitkLinear);
 
-        // 执行配准
+        // Execute registration and adjust transform parameters
         itk::simple::Transform transform = registration.Execute(fixedImage, movingImage);
         std::vector<double> parameters = transform.GetParameters();
         if (std::abs(parameters[0]) > 1) {
@@ -188,10 +191,12 @@ itk::simple::Transform ImageUtils::registerImage(const itk::simple::Image &fixed
             parameters[1] += parameters[1] > 0 ? 1 : -1;
         }
 
+        // Pad image boundaries to accommodate translation
         std::vector<unsigned int> padBound = {static_cast<unsigned int>(std::round(std::abs(parameters[0]))),
                                               static_cast<unsigned int>(std::round(std::abs(parameters[1])))};
         movingImage = itk::simple::ZeroFluxNeumannPad(movingImage, padBound, padBound);
 
+        // Apply transform and extract registered region
         transform.SetParameters(parameters);
         movingImage = itk::simple::Resample(movingImage, transform, itk::simple::sitkNearestNeighbor,
                                             0.0, movingImage.GetPixelID());
@@ -236,6 +241,7 @@ DArray ImageUtils::calibrateDistance(const FArray &holograms, int numImages, int
 
 double ImageUtils::computePixels(const cv::Mat &image)
 {
+    // Split the image into real and imaginary parts
     cv::Mat planes[] = {image, cv::Mat::zeros(image.size(), image.type())};
     cv::Mat complexImg;
     cv::merge(planes, 2, complexImg);
@@ -328,15 +334,15 @@ void ImageUtils::displayPhase(FArray &phase, int rows, int cols, const std::stri
 bool IOUtils::readDataDims(const std::string &filename, const std::string &datasetName, std::vector<hsize_t> &dims)
 {
     try {
-        // 打开H5文件和数据集
+        // Open H5 file and dataset
         H5::H5File file(filename, H5F_ACC_RDONLY);
         H5::DataSet dataset = file.openDataSet(datasetName);
 
-        // 获取数据空间和维度
+        // Get dataspace and dimensions
         H5::DataSpace dataspace = dataset.getSpace();
         int rank = dataspace.getSimpleExtentNdims();
         
-        // 调整dims向量大小并获取维度信息
+        // Resize dims vector and get dimension info
         dims.resize(rank);
         dataspace.getSimpleExtentDims(dims.data(), nullptr);
 
@@ -362,8 +368,10 @@ bool IOUtils::readProcessedGrams(const std::string &filename, const std::string 
             return false;
         }
 
+        // Get dimension info and read data to FArray
         dims.resize(rank);
         dataspace.getSimpleExtentDims(dims.data(), nullptr);
+
         holograms.resize(dims[0] * dims[1] * dims[2]);
         dataset.read(holograms.data(), H5::PredType::NATIVE_FLOAT);
 
@@ -390,6 +398,7 @@ bool IOUtils::readPhasegrams(const std::string &filename, const std::string &dat
             return false;
         }
 
+        // Get dimension info and read data to FArray
         dims.resize(rank);
         dataspace.getSimpleExtentDims(dims.data(), nullptr);
 
@@ -471,22 +480,22 @@ bool IOUtils::save3DGrams(const std::string &filename, const std::string &datase
 bool IOUtils::read4DimData(const std::string &filename, const std::string &datasetName, FArray &data, hsize_t offset, hsize_t count)
 {
     try {
-        // 打开HDF5文件和数据集
+        // Open HDF5 file and dataset
         H5::H5File file(filename, H5F_ACC_RDONLY);
         H5::DataSet dataset = file.openDataSet(datasetName);
         
-        // 获取数据空间
+        // Get dataspace
         H5::DataSpace dataspace = dataset.getSpace();
         hsize_t dims[4];
         dataspace.getSimpleExtentDims(dims, nullptr);
         
-        // 设置读取区域
+        // Set read region
         hsize_t offset_[4] = {offset, 0, 0, 0};
         hsize_t count_[4] = {count, dims[1], dims[2], dims[3]};
         dataspace.selectHyperslab(H5S_SELECT_SET, count_, offset_);
         
         H5::DataSpace memspace(4, count_);        
-        // 调整数据数组大小并读取数据
+        // Resize data array and read data
         data.resize(count_[0] * count_[1] * count_[2] * count_[3]);
         dataset.read(data.data(), H5::PredType::NATIVE_FLOAT, memspace, dataspace);
         
@@ -500,11 +509,11 @@ bool IOUtils::read4DimData(const std::string &filename, const std::string &datas
 bool IOUtils::createFileDataset(const std::string &filename, const std::string &datasetName, const std::vector<hsize_t> &dims)
 {
     try {
-        // 创建HDF5文件
+        // Create HDF5 file
         H5::H5File file(filename, H5F_ACC_TRUNC);
-        // 创建数据空间
+        // Create data space
         H5::DataSpace dataspace(dims.size(), dims.data());
-        // 创建数据集
+        // Create dataset
         H5::DataSet dataset = file.createDataSet(datasetName, H5::PredType::NATIVE_FLOAT, dataspace);
         
         return true;
@@ -518,7 +527,7 @@ bool IOUtils::write3DimData(const std::string &filename, const std::string &data
                             const std::vector<hsize_t> &dims, hsize_t offset)
 {
     try {
-        // 尝试打开文件，如果不存在则创建
+        // Try to open the file, create if it doesn't exist
         H5::H5File file;
         if (offset == 0) {
             file = H5::H5File(filename, H5F_ACC_TRUNC);
@@ -528,21 +537,22 @@ bool IOUtils::write3DimData(const std::string &filename, const std::string &data
         
         H5::DataSet dataset;
         if (offset == 0) {
-            // 如果数据集不存在，创建新的数据集
+            // Create new dataset if it doesn't exist
             H5::DataSpace dataspace(3, dims.data());
             dataset = file.createDataSet(datasetName, H5::PredType::NATIVE_FLOAT, dataspace);
         } else {
-            // 尝试打开已存在的数据集
+            // Try to open existing dataset
             dataset = file.openDataSet(datasetName);
         }
         
-        // 设置写入区域，一次写入一批数据
+        // Set write region, write one batch at a time
         hsize_t offset_[3] = {offset, 0, 0};
         hsize_t count_[3] = {data.size() / (dims[1] * dims[2]), dims[1], dims[2]};
         
         H5::DataSpace dataspace = dataset.getSpace();
         dataspace.selectHyperslab(H5S_SELECT_SET, count_, offset_);
         
+        // Create memory space and write data
         H5::DataSpace memspace(3, count_);        
         dataset.write(data.data(), H5::PredType::NATIVE_FLOAT, memspace, dataspace);
         
@@ -557,14 +567,15 @@ bool IOUtils::write4DimData(const std::string &filename, const std::string &data
                             const std::vector<hsize_t> &dims, hsize_t offset)
 {
     try {
-        // 尝试打开文件，如果不存在则创建
+        // Try to open the file, create if it doesn't exist
         H5::H5File file = H5::H5File(filename, H5F_ACC_RDWR);        
         H5::DataSet dataset = file.openDataSet(datasetName);
         
-        // 设置写入区域，一次写入一批数据
+        // Set write region, write one batch at a time
         hsize_t offset_[4] = {offset, 0, 0, 0};
         hsize_t count_[4] = {data.size() / (dims[1] * dims[2] * dims[3]), dims[1], dims[2], dims[3]};
         
+        // Get dataspace and set write region
         H5::DataSpace dataspace = dataset.getSpace();
         dataspace.selectHyperslab(H5S_SELECT_SET, count_, offset_);
         

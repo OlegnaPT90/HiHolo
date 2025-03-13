@@ -77,6 +77,7 @@ PMagnitudeCons::PMagnitudeCons(const float *measuredGrams, int numimages, const 
                        Type projectionType, bool calcError): measurements(measuredGrams), numImages(numimages), imSize(imsize), propagators(props), 
                        type(projectionType), calculateError(calcError)
 {   
+    // Check projection type and set batch size
     if (type == Averaged) {
         batchSize = numImages;
     } else if (type == Sequential || type == Cyclic) {
@@ -85,6 +86,7 @@ PMagnitudeCons::PMagnitudeCons(const float *measuredGrams, int numimages, const 
         throw std::invalid_argument("Invalid projection computing method!");
     }
 
+    // Map projection type to corresponding method
     std::unordered_map<Type, Method> methodMap {{Averaged, &PMagnitudeCons::projAveraged}, {Sequential, &PMagnitudeCons::projSequential},
                                                 {Cyclic, &PMagnitudeCons::projCyclic}};
     auto iterator = methodMap.find(type);
@@ -118,6 +120,7 @@ PMagnitudeCons::PMagnitudeCons(const float *measuredGrams, const float *p_measur
     blockSize = 1024;
 }
 
+// Project step: propagate wavefield and constrain amplitude
 void PMagnitudeCons::projectStep(const float *measuredGrams, const PropagatorPtr &prop)
 {
     prop->propagate(complexWave, cmp3DWave);
@@ -145,6 +148,7 @@ void PMagnitudeCons::projProbeAveraged()
     int numBlocks1 = (imSize[0] * imSize[1] + blockSize - 1) / blockSize;
     int numBlocks2 = (imSize[0] * imSize[1] * batchSize + blockSize - 1) / blockSize;
 
+    // Update probe wavefield and propagate
     numBlocks = numBlocks1;
     multiplyWaveField<<<numBlocks, blockSize>>>(probeWave, complexWave, probe, imSize[0] * imSize[1]);
     propagators[0]->propagate(probeWave, cmp3DWave);
@@ -153,6 +157,7 @@ void PMagnitudeCons::projProbeAveraged()
     limitAmplitude<<<numBlocks, blockSize>>>(cmp3DWave, measurements, imSize[0] * imSize[1] * batchSize);
     propagators[0]->backPropagate(cmp3DWave, probeWave);
 
+    // Isolate probe and propagate
     numBlocks = numBlocks1;
     scaleComplexData<<<numBlocks, blockSize>>>(probeWave, imSize[0] * imSize[1], 1.0f / batchSize);
     updateDM<<<numBlocks, blockSize>>>(probe, probeWave, complexWave, imSize[0] * imSize[1]);
@@ -162,6 +167,7 @@ void PMagnitudeCons::projProbeAveraged()
     limitAmplitude<<<numBlocks, blockSize>>>(cmp3DWave, p_measurements, imSize[0] * imSize[1] * batchSize);
     propagators[0]->backPropagate(cmp3DWave, probe);
 
+    // Isolate object wavefield from probe wavefield
     numBlocks = numBlocks1;
     scaleComplexData<<<numBlocks, blockSize>>>(probe, imSize[0] * imSize[1], 1.0f / batchSize);
     updateDM<<<numBlocks, blockSize>>>(complexWave, probeWave, probe, imSize[0] * imSize[1]);

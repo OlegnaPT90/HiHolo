@@ -6,6 +6,7 @@ Propagator::Propagator(const IntArray &imsize, const F2DArray &fresnelnumbers, C
     numImages = fresnelNumbers.size();
     cudaMalloc(&propKernels, numImages * imSize[0] * imSize[1] * sizeof(cuFloatComplex));
 
+    // Create CUDA streams for each propagation kernel
     std::vector<cudaStream_t> streams(numImages);
     for (int i = 0; i < numImages; i++) {
         cudaStreamCreate(&streams[i]);
@@ -37,9 +38,10 @@ void Propagator::propagate(cuFloatComplex *complexWave, cuFloatComplex *propagat
 
 void Propagator::backPropagate(cuFloatComplex *propagatedWave, cuFloatComplex *complexWave)
 {       
-    // Process of back propagation
+    // imBack = conj(obj.propKernel) .* obj.FT(imBack)
     fftUtils.fft_fwd_batch(propagatedWave);
 
+    // Process of back propagation
     int blockSize = 1024;
     int numBlocks = (imSize[0] * imSize[1] + blockSize - 1) / blockSize;
     backPropProcess<<<numBlocks, blockSize>>>(complexWave, propagatedWave, propKernels, imSize[0] * imSize[1], numImages);
