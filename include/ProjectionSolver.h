@@ -24,7 +24,7 @@ class ProjectionSolver
         Projector *projMagnitude;
         Projector *projObject;
         bool isConverged;
-        // Each Frray represents a different error
+        // Each FArray represents a different error
         F2DArray residual;
         WaveField psi;
         WaveField oldPsi;

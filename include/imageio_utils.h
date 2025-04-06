@@ -1,10 +1,10 @@
 #ifndef IMAGEIO_UTILS_H_
 #define IMAGEIO_UTILS_H_
 
-#include <opencv2/opencv.hpp>
-#include <SimpleITK.h>
 #include <hdf5.h>
 #include <gsl/gsl_fit.h>
+#include <opencv2/opencv.hpp>
+#include <SimpleITK.h>
 #include "datatypes.h"
 #include "math_utils.h"
 
@@ -42,8 +42,10 @@ namespace IOUtils
     bool saveProcessedGrams(const std::string &filename, const std::string &datasetName, const FArray &processedGrams, int numImages, int rows, int cols);
     bool savePhasegrams(const std::string &filename, const std::string &datasetName, const FArray &reconsPhase, int rows, int cols);
     bool save3DGrams(const std::string &filename, const std::string &datasetName, const FArray &registeredGrams, int numImages, int rows, int cols);
+    bool read3DimData(const std::string &filename, const std::string &datasetName, FArray &data, hsize_t offset, hsize_t count);
     bool read4DimData(const std::string &filename, const std::string &datasetName, FArray &data, hsize_t offset, hsize_t count);
     bool createFileDataset(const std::string &filename, const std::string &datasetName, const std::vector<hsize_t> &dims);
+    bool write3DimData(const std::string &filename, const std::string &datasetName, const FArray &data, const std::vector<hsize_t> &dims, hsize_t offset);
     bool write4DimData(const std::string &filename, const std::string &datasetName, const FArray &data, const std::vector<hsize_t> &dims, hsize_t offset);
 }
 

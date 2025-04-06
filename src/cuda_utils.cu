@@ -752,6 +752,82 @@ float CUDAUtils::computeL2Norm(const float* data1, const float* data2, int numel
     return std::sqrt(sqSum);
 }
 
+void CUDAUtils::ctf_recons_kernel(const float *holograms, float *result, const IntArray &imSize, int numImages,
+                                  const F2DArray &fresnelNumbers, float betaDeltaRatio, float *regWeights)
+{
+        // 分配GPU内存并生成频率网格
+        float *rowRange, *colRange;
+        cudaMalloc((void**)&rowRange, imSize[0] * sizeof(float));
+        cudaMalloc((void**)&colRange, imSize[1] * sizeof(float));
+        FArray spacing(2, 1.0f);
+        CUDAUtils::genFFTFreq(rowRange, colRange, imSize, spacing);
+
+        // 为CTF相关数据分配GPU内存
+        cuFloatComplex *CTFHolograms;
+        float *CTFSq;
+        cudaMalloc((void**)&CTFHolograms, imSize[0] * imSize[1] * sizeof(cuFloatComplex));
+        cudaMalloc((void**)&CTFSq, imSize[0] * imSize[1] * sizeof(float));
+
+        float *rowComponent, *colComponent;
+        cudaMalloc((void**)&rowComponent, imSize[0] * sizeof(float));
+        cudaMalloc((void**)&colComponent, imSize[1] * sizeof(float));
+        float *tempCTF;
+        cuFloatComplex *tempHologram;
+        cudaMalloc((void**)&tempCTF, imSize[0] * imSize[1] * sizeof(float));
+        cudaMalloc((void**)&tempHologram, imSize[0] * imSize[1] * sizeof(cuFloatComplex));
+
+        CUFFTUtils cufftUtils(imSize[0], imSize[1], 1);
+
+        // 定义不同内核的网格和块大小
+        int blockSize1D = 512;
+        int gridRowSize1D = (imSize[0] + blockSize1D - 1) / blockSize1D;
+        int gridColSize1D = (imSize[1] + blockSize1D - 1) / blockSize1D;
+        dim3 blockSize2D(32, 32);
+        dim3 gridSize2D((imSize[1] + blockSize2D.x - 1) / blockSize2D.x, 
+                        (imSize[0] + blockSize2D.y - 1) / blockSize2D.y);
+        size_t sharedMemSize = (blockSize2D.x + blockSize2D.y) * sizeof(float);
+        int blockSize = 1024;
+        int gridSize = (imSize[0] * imSize[1] + blockSize - 1) / blockSize;
+
+        // 初始化CTF数据
+        initializeData<<<gridSize, blockSize>>>(CTFHolograms, make_cuFloatComplex(0.0f, 0.0f), imSize[0] * imSize[1]);
+        initializeData<<<gridSize, blockSize>>>(CTFSq, 0.0f, imSize[0] * imSize[1]);
+        
+        // CTF重建主循环
+        for (size_t i = 0; i < numImages; i++) {
+            // 计算CTF传递函数
+            genCTFComponent<<<gridRowSize1D, blockSize1D>>>(rowComponent, rowRange, fresnelNumbers[i][0], imSize[0]);
+            genCTFComponent<<<gridColSize1D, blockSize1D>>>(colComponent, colRange, fresnelNumbers[i][1], imSize[1]);
+            multiplyObliFactor_2<<<gridSize2D, blockSize2D, sharedMemSize>>>(tempCTF, rowComponent, colComponent, imSize[0], imSize[1]);
+            computeCTF<<<gridSize, blockSize>>>(tempCTF, betaDeltaRatio, imSize[0] * imSize[1]);
+            
+            // 将全息图的FFT乘以CTF传递函数
+            floatToComplex<<<gridSize, blockSize>>>(holograms + i * imSize[0] * imSize[1], tempHologram, imSize[0] * imSize[1]);
+            cufftUtils.fft_fwd(tempHologram);
+            CTFMultiplyHologram<<<gridSize, blockSize>>>(tempHologram, tempCTF, imSize[0] * imSize[1]);
+            addWaveField<<<gridSize, blockSize>>>(CTFHolograms, tempHologram, imSize[0] * imSize[1]);
+            addSquareData<<<gridSize, blockSize>>>(CTFSq, tempCTF, imSize[0] * imSize[1]);
+        }
+        
+        scaleFloatData<<<gridSize, blockSize>>>(CTFSq, imSize[0] * imSize[1], 2.0f);
+        // 傅里叶变换零频率的校正
+        subtractConstant<<<1, 1>>>(CTFHolograms, imSize[0] * imSize[1] * numImages * betaDeltaRatio, 1);
+
+        // 应用正则化权重
+        addFloatData<<<gridSize, blockSize>>>(regWeights, CTFSq, imSize[0] * imSize[1]);
+
+        // 最终计算和逆傅里叶变换
+        complexDivideFloat<<<gridSize, blockSize>>>(CTFHolograms, regWeights, imSize[0] * imSize[1]);
+        cufftUtils.fft_bwd(CTFHolograms);
+        extractRealData<<<gridSize, blockSize>>>(CTFHolograms, result, imSize[0] * imSize[1]);
+        
+        // 释放临时内存
+        cudaFree(rowComponent); cudaFree(colComponent); 
+        cudaFree(rowRange); cudaFree(colRange);
+        cudaFree(CTFHolograms); cudaFree(CTFSq);
+        cudaFree(tempCTF); cudaFree(tempHologram);
+}
+
 float CUDAUtils::computeL2Norm(const cuFloatComplex* cmplxData1, const cuFloatComplex* cmplxData2, int numel)
 {
     float *temp;

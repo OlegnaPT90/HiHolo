@@ -47,15 +47,6 @@ namespace PhaseRetrieval
         if (error != cudaSuccess || deviceCount == 0) {
             throw std::runtime_error("No CUDA capable GPU device found!");
         }
-
-        cudaDeviceProp deviceProp;
-        cudaGetDeviceProperties(&deviceProp, 0);
-        std::cout << "Using GPU device: " << deviceProp.name << std::endl;
-        std::cout << "Compute capability: " << deviceProp.major << "." << deviceProp.minor << std::endl;
-
-        /* Check correctness and compatibility of measurements and fresnel numbers */
-        if (holograms.empty() || imSize.empty())
-            throw std::invalid_argument("Invalid measurement data or image size!");
   
         if (fresnelnumbers.size() != numImages)
             throw std::invalid_argument("The number of images and fresnel numbers does not match!");
@@ -74,9 +65,11 @@ namespace PhaseRetrieval
         if (lowFreqLim < (2.0f * numImages * std::pow(betaDeltaRatio, 2.0f))) {
             lowFreqLim = 0.0f;
         }
+
+        std::cout << "Choosing Algorithm: CTF" << std::endl;
         
         // transfer holograms to GPU
-        float *holograms_gpu;
+        float *holograms_gpu, *phase_gpu;
         cudaMalloc((void**)&holograms_gpu, holograms.size() * sizeof(float));
         cudaMemcpy(holograms_gpu, holograms.data(), holograms.size() * sizeof(float), cudaMemcpyHostToDevice);
 
@@ -101,73 +94,11 @@ namespace PhaseRetrieval
             }
             delete[] streams;
             
-            float *temp = holograms_gpu;
+            cudaFree(holograms_gpu);
             holograms_gpu = paddedHolograms_gpu;
-            cudaFree(temp);
         }
 
-        // Allocate GPU memory and generate frequency grid
-        float *rowRange, *colRange;
-        cudaMalloc((void**)&rowRange, newSize[0] * sizeof(float));
-        cudaMalloc((void**)&colRange, newSize[1] * sizeof(float));
-        FArray spacing(2, 1.0f);
-        CUDAUtils::genFFTFreq(rowRange, colRange, newSize, spacing);
-
-        std::cout << "Choosing Algorithm: CTF" << std::endl;
-
-        // Allocate GPU memory for CTF related data
-        cuFloatComplex *CTFHolograms;
-        float *CTFSq;
-        cudaMalloc((void**)&CTFHolograms, newSize[0] * newSize[1] * sizeof(cuFloatComplex));
-        cudaMalloc((void**)&CTFSq, newSize[0] * newSize[1] * sizeof(float));
-
-        float *rowComponent, *colComponent;
-        cudaMalloc((void**)&rowComponent, newSize[0] * sizeof(float));
-        cudaMalloc((void**)&colComponent, newSize[1] * sizeof(float));
-        float *tempCTF;
-        cuFloatComplex *tempHologram;
-        cudaMalloc((void**)&tempCTF, newSize[0] * newSize[1] * sizeof(float));
-        cudaMalloc((void**)&tempHologram, newSize[0] * newSize[1] * sizeof(cuFloatComplex));
-
-        cufftHandle plan;
-        cufftPlan2d(&plan, newSize[1], newSize[0], CUFFT_C2C);
-
-        // Define grid and block sizes for different kernels
-        int blockSize1D = 512;
-        int gridRowSize1D = (newSize[0] + blockSize1D - 1) / blockSize1D;
-        int gridColSize1D = (newSize[1] + blockSize1D - 1) / blockSize1D;
-        dim3 blockSize2D(32, 32);
-        dim3 gridSize2D((newSize[1] + blockSize2D.x - 1) / blockSize2D.x, 
-                        (newSize[0] + blockSize2D.y - 1) / blockSize2D.y);
-        size_t sharedMemSize = (blockSize2D.x + blockSize2D.y) * sizeof(float);
-        int blockSize = 1024;
-        int gridSize = (newSize[0] * newSize[1] + blockSize - 1) / blockSize;
-
-        // Initialize CTF data
-        initializeData<<<gridSize, blockSize>>>(CTFHolograms, make_cuFloatComplex(0.0f, 0.0f), newSize[0] * newSize[1]);
-        initializeData<<<gridSize, blockSize>>>(CTFSq, 0.0f, newSize[0] * newSize[1]);
-        
-        // CTF reconstruction main loop
-        for (size_t i = 0; i < numImages; i++) {
-            // Compute CTF transfer function
-            genCTFComponent<<<gridRowSize1D, blockSize1D>>>(rowComponent, rowRange, fresnelNumbers[i][0], newSize[0]);
-            genCTFComponent<<<gridColSize1D, blockSize1D>>>(colComponent, colRange, fresnelNumbers[i][1], newSize[1]);
-            multiplyObliFactor_2<<<gridSize2D, blockSize2D, sharedMemSize>>>(tempCTF, rowComponent, colComponent, newSize[0], newSize[1]);
-            computeCTF<<<gridSize, blockSize>>>(tempCTF, betaDeltaRatio, newSize[0] * newSize[1]);
-            
-            // Multiply FFT of holograms by CTF transfer function
-            floatToComplex<<<gridSize, blockSize>>>(holograms_gpu + i * newSize[0] * newSize[1], tempHologram, newSize[0] * newSize[1]);
-            cufftExecC2C(plan, tempHologram, tempHologram, CUFFT_FORWARD);
-            CTFMultiplyHologram<<<gridSize, blockSize>>>(tempHologram, tempCTF, newSize[0] * newSize[1]);
-            addWaveField<<<gridSize, blockSize>>>(CTFHolograms, tempHologram, newSize[0] * newSize[1]);
-            addSquareData<<<gridSize, blockSize>>>(CTFSq, tempCTF, newSize[0] * newSize[1]);
-        }
-        
-        scaleFloatData<<<gridSize, blockSize>>>(CTFSq, newSize[0] * newSize[1], 2.0f);
-        // Correction for zero-frequency of Fourier transform
-        subtractConstant<<<1, 1>>>(CTFHolograms, newSize[0] * newSize[1] * numImages * betaDeltaRatio, 1);
-        
-        // Calculate the fresnel mean by dimension
+        // 按维度计算菲涅尔平均值
         FArray fresnelMean(2);
         for (int i = 0; i < 2; i++) {
             float sum = 0.0f;
@@ -177,45 +108,126 @@ namespace PhaseRetrieval
             fresnelMean[i] = sum / numImages;
         }
 
-        // Apply regularization weights
         float *regWeights;
         cudaMalloc((void**)&regWeights, newSize[0] * newSize[1] * sizeof(float));
         CUDAUtils::ctfRegWeights(regWeights, newSize, fresnelMean, lowFreqLim, highFreqLim);
-        addFloatData<<<gridSize, blockSize>>>(regWeights, CTFSq, newSize[0] * newSize[1]);
 
-        // Final calculation and inverse Fourier transform
-        complexDivideFloat<<<gridSize, blockSize>>>(CTFHolograms, regWeights, newSize[0] * newSize[1]);
-        cufftExecC2C(plan, CTFHolograms, CTFHolograms, CUFFT_INVERSE);
-        scaleComplexData<<<gridSize, blockSize>>>(CTFHolograms, newSize[0] * newSize[1], 1.0f / (newSize[0] * newSize[1]));
-        extractRealData<<<gridSize, blockSize>>>(CTFHolograms, tempCTF, newSize[0] * newSize[1]);
-        
-        // Crop the result if padding is applied
+        cudaMalloc((void**)&phase_gpu, newSize[0] * newSize[1] * sizeof(float));
+        CUDAUtils::ctf_recons_kernel(holograms_gpu, phase_gpu, newSize, numImages, fresnelNumbers, betaDeltaRatio, regWeights);
+
+        // 如果应用了填充，则需要裁剪结果
         if (!padSize.empty()) {
-            float *croppedResult;
-            cudaMalloc((void**)&croppedResult, imSize[0] * imSize[1] * sizeof(float));
-            CUDAUtils::cropMatrix(tempCTF, croppedResult, newSize[0], newSize[1], padSize[0], padSize[1], padSize[0], padSize[1]);
-            
-            float *temp = tempCTF;
-            tempCTF = croppedResult;
-            cudaFree(temp);
+            float *croppedPhase;
+            cudaMalloc((void**)&croppedPhase, imSize[0] * imSize[1] * sizeof(float));
+            CUDAUtils::cropMatrix(phase_gpu, croppedPhase, newSize[0], newSize[1], padSize[0], padSize[1], padSize[0], padSize[1]);
+            cudaFree(phase_gpu);
+            phase_gpu = croppedPhase;
         }
 
         FArray result(imSize[0] * imSize[1]);
-        cudaMemcpy(result.data(), tempCTF, imSize[0] * imSize[1] * sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(result.data(), phase_gpu, imSize[0] * imSize[1] * sizeof(float), cudaMemcpyDeviceToHost);
+        cudaFree(phase_gpu); cudaFree(holograms_gpu); cudaFree(regWeights);
 
-        // Free memory and destroy plan
-        cufftDestroy(plan);
-        cudaFree(regWeights); cudaFree(tempCTF); cudaFree(tempHologram);
-        cudaFree(rowComponent); cudaFree(colComponent); cudaFree(rowRange); cudaFree(colRange);
-        cudaFree(holograms_gpu); cudaFree(CTFHolograms); cudaFree(CTFSq);
-        std::cout << "Deconstruction finished!" << std::endl;
-        
         return result;
+    }
+
+    CTFReconstructor::CTFReconstructor(int batchsize, int images, const IntArray &imsize, const F2DArray &fresnelnumbers, float lowFreqLim, float highFreqLim,
+                                       float ratio, const IntArray &padsize, CUDAUtils::PaddingType padtype): batchSize(batchsize), numImages(images), imSize(imsize),
+                                       newSize(imsize), fresnelNumbers(fresnelnumbers), betaDeltaRatio(ratio), padSize(padsize), padType(padtype)
+    {
+        for (auto &fresnelNumber: fresnelNumbers) {
+            if (fresnelNumber.size() != 1 && fresnelNumber.size() != imSize.size()) {
+                throw std::invalid_argument("Invalid Fresnel number!");
+            }
+            if (fresnelNumber.size() == 1) {
+                fresnelNumber.push_back(fresnelNumber[0]);
+            }
+        }
+
+        if (lowFreqLim < (2.0f * numImages * std::pow(betaDeltaRatio, 2.0f))) {
+            lowFreqLim = 0.0f;
+        }
+
+        if (!padSize.empty()) {
+            newSize[0] += 2 * padSize[0];
+            newSize[1] += 2 * padSize[1];
+            cudaMalloc((void**)&d_paddedHolograms, newSize[0] * newSize[1] * numImages * sizeof(float));
+            cudaMalloc((void**)&d_croppedPhase, imSize[0] * imSize[1] * sizeof(float));
+            streams = new cudaStream_t[numImages];
+            for (int i = 0; i < numImages; i++) {
+                cudaStreamCreate(&streams[i]);
+            }
+        }
+
+        cudaMalloc((void**)&d_holograms, batchSize * numImages * imSize[0] * imSize[1] * sizeof(float));
+        cudaMalloc((void**)&d_phase, newSize[0] * newSize[1] * sizeof(float));
+        cudaMalloc((void**)&regWeights, newSize[0] * newSize[1] * sizeof(float));
+        cudaMalloc((void**)&d_regTemp, newSize[0] * newSize[1] * sizeof(float));
+
+        FArray fresnelMean(2);
+        for (int i = 0; i < 2; i++) {
+            float sum = 0.0f;
+            for (int j = 0; j < numImages; j++) {
+                sum += fresnelNumbers[j][i];
+            }
+            fresnelMean[i] = sum / numImages;
+        }
+        CUDAUtils::ctfRegWeights(regWeights, newSize, fresnelMean, lowFreqLim, highFreqLim);
+    }
+
+    FArray CTFReconstructor::reconsBatch(const FArray &holograms)
+    {
+        cudaMemcpy(d_holograms, holograms.data(), holograms.size() * sizeof(float), cudaMemcpyHostToDevice);
+        FArray result(imSize[0] * imSize[1] * batchSize);
+
+        for (int i = 0; i < batchSize; i++) {
+            if (!padSize.empty()) {
+                for (int j = 0; j < numImages; j++) {
+                    CUDAUtils::padMatrix(d_holograms + i * numImages * imSize[0] * imSize[1] + j * imSize[0] * imSize[1],
+                                         d_paddedHolograms + j * newSize[0] * newSize[1], imSize[0], imSize[1], padSize[0],
+                                         padSize[1], padType, 0.0f, streams[j]);
+                }
+                for (int j = 0; j < numImages; j++) {
+                    cudaStreamSynchronize(streams[j]);
+                }
+
+                d_temp = d_paddedHolograms;
+            } else {
+                d_temp = d_holograms + i * numImages * imSize[0] * imSize[1];
+            }
+
+            cudaMemcpy(d_regTemp, regWeights, newSize[0] * newSize[1] * sizeof(float), cudaMemcpyDeviceToDevice);
+            CUDAUtils::ctf_recons_kernel(d_temp, d_phase, newSize, numImages, fresnelNumbers, betaDeltaRatio, d_regTemp);
+
+            if (!padSize.empty()) {
+                CUDAUtils::cropMatrix(d_phase, d_croppedPhase, newSize[0], newSize[1], padSize[0], padSize[1], padSize[0], padSize[1]);
+            } else {
+                d_croppedPhase = d_phase;
+            }
+
+            cudaMemcpy(result.data() + i * imSize[0] * imSize[1], d_croppedPhase, imSize[0] * imSize[1] * sizeof(float), cudaMemcpyDeviceToHost);
+        }
+
+        return result;
+    }
+
+    CTFReconstructor::~CTFReconstructor()
+    {
+        cudaFree(d_holograms); cudaFree(d_phase);
+        cudaFree(regWeights); cudaFree(d_regTemp);
+        if (!padSize.empty()) {
+            cudaFree(d_paddedHolograms);
+            cudaFree(d_croppedPhase);
+            for (int i = 0; i < numImages; i++) {
+                cudaStreamDestroy(streams[i]);
+            }
+            delete[] streams;
+        }
     }
 
     F2DArray reconstruct_iter(const FArray &holograms, int numImages, const IntArray &imSize, const F2DArray &fresnelNumbers, int iterations, 
                               const FArray &initialPhase, ProjectionSolver::Algorithm algorithm, const FArray &algoParameters, const IntArray &padSize,
-                              float minPhase, float maxPhase, float minAmplitude, float maxAmplitude, const FArray &support, float outSideValue, 
+                              float minPhase, float maxPhase, float minAmplitude, float maxAmplitude, const FArray &support, float outsideValue, 
                               PMagnitudeCons::Type projectionType, CUDAPropKernel::Type kernelType, CUDAUtils::PaddingType padType, const FArray &holoProbes, 
                               const FArray &initProbePhase, bool calcError)
     {
@@ -334,7 +346,7 @@ namespace PhaseRetrieval
             PS = pAmplitude;
         } else {
             pPhase = new PPhaseCons(minPhase, maxPhase);
-            pSupport = new PSupportCons(support_gpu, newSize[0] * newSize[1], outSideValue);
+            pSupport = new PSupportCons(support_gpu, newSize[0] * newSize[1], outsideValue);
             PS = new MultiObjectCons(pPhase, pAmplitude, pSupport);
         }
 
@@ -468,15 +480,16 @@ namespace PhaseRetrieval
     }
 
     Reconstructor::Reconstructor(int batchsize, int images, const IntArray &imsize, const F2DArray &fresnelNumbers, int iter, ProjectionSolver::Algorithm algo,
-                                  const FArray &algoParams, const IntArray &padsize, float minAmplitude, float maxAmplitude, PMagnitudeCons::Type projType, 
-                                  CUDAPropKernel::Type kernelType, CUDAUtils::PaddingType padtype): batchSize(batchsize), numImages(images), imSize(imsize),
-                                  newSize(imsize), iteration(iter), algorithm(algo), algoParameters(algoParams), padSize(padsize), projectionType(projType), padType(padtype)
+                                 const FArray &algoParams, const IntArray &padsize, float minPhase, float maxPhase, float minAmplitude, float maxAmplitude, 
+                                 const FArray &support, float outsideValue, PMagnitudeCons::Type projType, CUDAPropKernel::Type kernelType, CUDAUtils::PaddingType padtype): 
+                                 batchSize(batchsize), numImages(images), imSize(imsize), newSize(imsize), iteration(iter), algorithm(algo), algoParameters(algoParams),
+                                 padSize(padsize), projectionType(projType), padType(padtype), d_support(nullptr)
     {
         if (!padSize.empty()) {
             newSize[0] += 2 * padSize[0];
             newSize[1] += 2 * padSize[1];
             cudaMalloc((void**)&d_paddedHolograms, newSize[0] * newSize[1] * numImages * sizeof(float));
-            cudaMalloc((void**)&croppedComplexWave, imSize[0] * imSize[1] * sizeof(cuFloatComplex));
+            cudaMalloc((void**)&d_croppedPhase, imSize[0] * imSize[1] * sizeof(float));
             streams = new cudaStream_t[numImages];
             for (int i = 0; i < numImages; i++) {
                 cudaStreamCreate(&streams[i]);
@@ -484,20 +497,11 @@ namespace PhaseRetrieval
         }
 
         cudaMalloc((void**)&d_holograms, batchSize * numImages * imSize[0] * imSize[1] * sizeof(float));
+        cudaMalloc((void**)&d_initPhase, batchSize * imSize[0] * imSize[1] * sizeof(float));
         cudaMalloc((void**)&complexWave, newSize[0] * newSize[1] * sizeof(cuFloatComplex));
-        cudaMalloc((void**)&d_phase, imSize[0] * imSize[1] * sizeof(float));
-        
-        // print iterative algorithm
-        std::cout << "Choosing algorithm: ";
-        switch (algorithm) {
-            case ProjectionSolver::AP: std::cout << "AP"; break;
-            case ProjectionSolver::RAAR: std::cout << "RAAR"; break;
-            case ProjectionSolver::HIO: std::cout << "HIO"; break;
-            case ProjectionSolver::DRAP: std::cout << "DRAP"; break;
-            default: std::cout << "Unknown!"; break;
-        }
-        std::cout << std::endl;
+        cudaMalloc((void**)&d_phase, newSize[0] * newSize[1] * sizeof(float));
 
+        // Construct propagators according to the projection type
         if (projectionType == PMagnitudeCons::Averaged) {
             propagators.push_back(std::make_shared<Propagator>(newSize, fresnelNumbers, kernelType));
         } else {
@@ -506,13 +510,33 @@ namespace PhaseRetrieval
                 propagators.push_back(std::make_shared<Propagator>(newSize, singleFresnel, kernelType));
             }
         }
-        
-        PS = new PAmplitudeCons(minAmplitude, maxAmplitude);
+
+        if (!support.empty()) {
+            cudaMalloc((void**)&d_support, support.size() * sizeof(float));
+            cudaMemcpy(d_support, support.data(), support.size() * sizeof(float), cudaMemcpyHostToDevice);
+        }
+
+        // Construct projector on constraints of object plane
+        pAmplitude = new PAmplitudeCons(minAmplitude, maxAmplitude);
+        onlyAmpCons = (minPhase == -FloatInf && maxPhase == FloatInf && support.empty());
+        if (onlyAmpCons) {
+            PS = pAmplitude;
+        } else {
+            pPhase = new PPhaseCons(minPhase, maxPhase);
+            pSupport = new PSupportCons(d_support, newSize[0] * newSize[1], outsideValue);
+            PS = new MultiObjectCons(pPhase, pAmplitude, pSupport);
+        }
     }
 
-    FArray Reconstructor::reconsBatch(const FArray &holograms)
+    FArray Reconstructor::reconsBatch(const FArray &holograms, const FArray &initialPhase)
     {
         cudaMemcpy(d_holograms, holograms.data(), holograms.size() * sizeof(float), cudaMemcpyHostToDevice);
+        if (!initialPhase.empty()) {
+            if (initialPhase.size() != imSize[0] * imSize[1] * batchSize) {
+                throw std::invalid_argument("The sizes of guess phase and wave field do not match!");
+            }
+            cudaMemcpy(d_initPhase, initialPhase.data(), initialPhase.size() * sizeof(float), cudaMemcpyHostToDevice);
+        }
         FArray result(batchSize * imSize[0] * imSize[1]);
 
         for (int i = 0; i < batchSize; i++) {
@@ -538,24 +562,30 @@ namespace PhaseRetrieval
             sqrtIntensity<<<numBlocks, blockSize>>>(d_temp, newSize[0] * newSize[1] * numImages);
 
             // Construct projector on measured holograms
-            Projector *PM = new PMagnitudeCons(d_temp, numImages, newSize, propagators, projectionType);
-
+            Projector *PM = new PMagnitudeCons(d_temp, numImages, newSize, propagators, projectionType, false);
+            
             numBlocks = (newSize[0] * newSize[1] + blockSize - 1) / blockSize;
-            initializeData<<<numBlocks, blockSize>>>(complexWave, make_cuFloatComplex(1.0f, 0.0f), newSize[0] * newSize[1]);
+            if (!initialPhase.empty()) {
+                float *d_paddedInitPhase = CUDAUtils::padInputData(d_initPhase + i * imSize[0] * imSize[1], imSize, newSize, padSize, padType);
+                initByPhase<<<numBlocks, blockSize>>>(complexWave, d_paddedInitPhase, newSize[0] * newSize[1]);
+                if (d_paddedInitPhase != d_initPhase + i * imSize[0] * imSize[1]) {
+                    cudaFree(d_paddedInitPhase);
+                }
+            } else {
+                initializeData<<<numBlocks, blockSize>>>(complexWave, make_cuFloatComplex(1.0f, 0.0f), newSize[0] * newSize[1]);
+            }
             WaveField waveField(newSize[0], newSize[1], complexWave);
 
-            ProjectionSolver projectionSolver(PM, PS, waveField, algorithm, algoParameters);
-            projectionSolver.execute(iteration).reconsPsi.getComplexWave(complexWave);
+            ProjectionSolver projectionSolver(PM, PS, waveField, algorithm, algoParameters, false);
+            projectionSolver.execute(iteration).reconsPsi.getPhase(d_phase);
 
             if (!padSize.empty()) {
-                CUDAUtils::cropMatrix(complexWave, croppedComplexWave, newSize[0], newSize[1], padSize[0], padSize[1], padSize[0], padSize[1]);
+                CUDAUtils::cropMatrix(d_phase, d_croppedPhase, newSize[0], newSize[1], padSize[0], padSize[1], padSize[0], padSize[1]);
             } else {
-                croppedComplexWave = complexWave;
+                d_croppedPhase = d_phase;
             }
 
-            WaveField reconsPsi(imSize[0], imSize[1], croppedComplexWave);
-            reconsPsi.getPhase(d_phase);
-            cudaMemcpy(result.data() + i * imSize[0] * imSize[1], d_phase, imSize[0] * imSize[1] * sizeof(float), cudaMemcpyDeviceToHost);
+            cudaMemcpy(result.data() + i * imSize[0] * imSize[1], d_croppedPhase, imSize[0] * imSize[1] * sizeof(float), cudaMemcpyDeviceToHost);
 
             delete PM;
         }
@@ -568,10 +598,13 @@ namespace PhaseRetrieval
         cudaFree(d_holograms);
         cudaFree(d_phase);
         cudaFree(complexWave);
+        cudaFree(d_initPhase);
+        if (d_support)
+            cudaFree(d_support);
 
         if (!padSize.empty()) {
             cudaFree(d_paddedHolograms);
-            cudaFree(croppedComplexWave);
+            cudaFree(d_croppedPhase);
             for (int i = 0; i < numImages; i++) {
                 cudaStreamDestroy(streams[i]);
             }
@@ -579,6 +612,8 @@ namespace PhaseRetrieval
         }
 
         delete PS;
+        if (!onlyAmpCons) {
+            delete pPhase; delete pSupport; delete pAmplitude;
+        }
     }
-
 }

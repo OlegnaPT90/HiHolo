@@ -156,7 +156,7 @@ int main(int argc, char* argv[])
     }
 
     FArray support;
-    float outSideValue = 1.0f;
+    float outsideValue = 1.0f;
 
     // Process padding parameters
     IntArray padSize;
@@ -220,7 +220,7 @@ int main(int argc, char* argv[])
     for (int i = 0; i < iterations / plotInterval; ++i) {
         result = PhaseRetrieval::reconstruct_iter(holograms, numHolograms, imSize, fresnelNumbers, plotInterval, initialPhase,
                                                   algorithm, parameters, padSize, phaLimits[0], phaLimits[1], ampLimits[0], 
-                                                  ampLimits[1], support, outSideValue, projectionType, kernelMethod, padType,
+                                                  ampLimits[1], support, outsideValue, projectionType, kernelMethod, padType,
                                                   probeGrams, initProbePhase, calcError);
     
         initialPhase = result[0];

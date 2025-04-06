@@ -7,13 +7,21 @@
 
 int main(int argc, char* argv[])
 {
-    argparse::ArgumentParser program("holo_recons_ctf");
+    argparse::ArgumentParser program("holo_recons_ctf_angles");
     program.set_usage_max_line_width(120);
 
     // Add arguments to ArgumentParser object
     program.add_argument("--input_files", "-I")
            .help("input hdf5 file and dataset")
            .required().nargs(2);
+
+    program.add_argument("--output_files", "-O")
+           .help("output hdf5 file and dataset")
+           .required().nargs(2);
+
+    program.add_argument("--batch_size", "-b")
+           .help("batch size of holograms processed at a time")
+           .required().scan<'i', int>();
 
     program.add_argument("--fresnel_numbers", "-f")
            .help("list of fresnel numbers corresponding to holograms")
@@ -48,15 +56,22 @@ int main(int argc, char* argv[])
     }
 
     // Read holograms and image size from user inputs
-    FArray holograms;
     std::vector<hsize_t> dims;
     std::vector<std::string> inputs = program.get<std::vector<std::string>>("-I");
-    IOUtils::readProcessedGrams(inputs[0], inputs[1], holograms, dims);
+    IOUtils::readDataDims(inputs[0], inputs[1], dims);
+    if (dims.size() != 4) {
+        std::cerr << "Error: Input data must have 4 dimensions" << std::endl;
+        return 1;
+    }
     
-    int numHolograms = static_cast<int>(dims[0]);
-    int rows = static_cast<int>(dims[1]);
-    int cols = static_cast<int>(dims[2]);
+    int totalAngles = static_cast<int>(dims[0]);
+    int numHolograms = static_cast<int>(dims[1]);
+    int rows = static_cast<int>(dims[2]);
+    int cols = static_cast<int>(dims[3]);
     IntArray imSize {rows, cols};
+
+    int batchSize = program.get<int>("-b");
+    FArray holograms(batchSize * numHolograms * rows * cols);
 
     auto fresnel_input = program.get<FArray>("-f");
     F2DArray fresnelNumbers;
@@ -77,17 +92,28 @@ int main(int argc, char* argv[])
     // Read regularisation parameters
     float lowFreqLim = program.get<float>("-L");
     float highFreqLim = program.get<float>("-H");
-       
+
+    std::vector<std::string> outputs = program.get<std::vector<std::string>>("-O");
+    std::vector<hsize_t> outputDims {dims[0], dims[2], dims[3]};
+    IOUtils::createFileDataset(outputs[0], outputs[1], outputDims);
+
+    auto reconstructor = new PhaseRetrieval::CTFReconstructor(batchSize, numHolograms, imSize,
+                                                              fresnelNumbers, lowFreqLim, highFreqLim,
+                                                              ratio, padSize, padType);
     auto start = std::chrono::high_resolution_clock::now();    
-    FArray phase = PhaseRetrieval::reconstruct_ctf(holograms, numHolograms, imSize, fresnelNumbers, lowFreqLim, highFreqLim, ratio, padSize, padType);
+
+    for (int i = 0; i < totalAngles; i += batchSize) {
+       std::cout << "Processing batch " << i / batchSize << std::endl;
+       IOUtils::read4DimData(inputs[0], inputs[1], holograms, i, batchSize);
+       auto result = reconstructor->reconsBatch(holograms);
+       IOUtils::write3DimData(outputs[0], outputs[1], result, outputDims, i);
+    }
+
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Elapsed time: " << duration.count() << " milliseconds" << std::endl;
 
-    F2DArray result {phase};
-    // Display the phase result and save to HDF5 file
-    // IOUtils::savePhasegrams("/home/hug/Downloads/HoloTomo_Data/reconsfile.h5", "phasedata", result[0], imSize[0], imSize[1]);
-    ImageUtils::displayNDArray(result, imSize[0], imSize[1], std::vector<std::string>{"phase"});
+    delete reconstructor;
 
     return 0;
 }

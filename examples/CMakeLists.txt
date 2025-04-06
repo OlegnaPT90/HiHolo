@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(holo_registration LANGUAGES CXX CUDA C)
+project(holo_recons_ite_angles LANGUAGES CXX CUDA C)
 
 # 设置 C++ 标准
 set(CMAKE_CXX_STANDARD 17)
@@ -28,7 +28,7 @@ include_directories(
 
 # 定义源文件
 set(CPP_SRCS
-    arg_holo_reg.cpp
+    arg_recons_ite_angles.cpp
     ../src/math_utils.cpp
     ../src/imageio_utils.cpp
     ../src/ProjectionSolver.cpp

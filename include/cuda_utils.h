@@ -64,6 +64,8 @@ namespace CUDAUtils
     float* padInputData(float* inputData, const IntArray& imSize, const IntArray& newSize, const IntArray& padSize, PaddingType padType, float padValue = 0.0f); 
     float computeL2Norm(const cuFloatComplex* cmplxData1, const cuFloatComplex* cmplxData2, int numel);
     float computeL2Norm(const float* data1, const float* data2, int numel);
+    void ctf_recons_kernel(const float *holograms, float *result, const IntArray &imSize, int numImages, const F2DArray &fresnelNumbers,
+                           float betaDeltaRatio, float *regWeights);
 }
 
 // Normalize the inverse FFT result
@@ -146,4 +148,5 @@ __global__ void displayMatrix(const float* matrix, int rows, int cols);
 __global__ void displayComplexMatrix(const cuFloatComplex* matrix, int rows, int cols);
 
 __global__ void floatToComplex(const float* data, cuFloatComplex* complexData, int numel);
+
 #endif
