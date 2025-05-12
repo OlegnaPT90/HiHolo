@@ -5,15 +5,21 @@ project(holo_recons LANGUAGES CXX CUDA C)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# 添加用户可配置的选项
+option(USE_BUNDLED_DEPENDENCIES "使用捆绑的依赖项" OFF)
+
+# 设置可配置的库路径
+set(ARGPARSE_DIR "/home/hug/workspace/software/argparse" CACHE PATH "argparse 库的路径")
+set(SimpleITK_DIR "/home/hug/workspace/software/SimpleITK-build/SimpleITK-build" CACHE PATH "SimpleITK 配置目录")
+set(ITK_DIR "/home/hug/workspace/software/SimpleITK-build/ITK-build" CACHE PATH "ITK 配置目录")
+
 # 查找必要的包
 find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui imgcodecs)
 find_package(CUDA REQUIRED)
 find_package(GSL REQUIRED)
 find_package(HDF5 REQUIRED)
 
-# SimpleITK 和 ITK 配置
-set(SimpleITK_DIR "/home/hug/workspace/software/SimpleITK-build/SimpleITK-build" CACHE PATH "SimpleITK 配置目录")
-set(ITK_DIR "/home/hug/workspace/software/SimpleITK-build/ITK-build" CACHE PATH "ITK 配置目录")
+# SimpleITK 配置
 find_package(SimpleITK REQUIRED)
 
 # 包含目录
@@ -22,7 +28,7 @@ include_directories(
     ${CUDA_INCLUDE_DIRS}
     ${HDF5_INCLUDE_DIRS}
     ${GSL_INCLUDE_DIRS}
-    /home/hug/workspace/software/argparse/include
+    ${ARGPARSE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include
 )
 
