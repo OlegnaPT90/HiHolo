@@ -56,13 +56,38 @@ namespace PhaseRetrieval
         return result;
     }
 
-    //     for (auto &mat: mats) {
-    //         ImageUtils::removeStripes(mat, rangeRows, rangeCols, movmeanSize, method);
-    //     }
+    Preprocessor::Preprocessor(int batchsize, int numimages, const IntArray &imsize,  const U16Array &dark, const U16Array &flat, int kernelsize, float in_threshold,
+                               int rangerows, int rangecols, int movmeansize, const std::string &in_method): batchSize(batchsize), numImages(numimages), imSize(imsize),
+                               kernelSize(kernelsize), threshold(in_threshold), rangeRows(rangerows), rangeCols(rangecols), movmeanSize(movmeansize), method(in_method)
+    {
+        holograms.resize(batchSize * numImages * imSize[0] * imSize[1]);
+        darkMat = ImageUtils::convertVecToMat(dark, imSize[0], imSize[1]);
+        flatMat = ImageUtils::convertVecToMat(flat, imSize[0], imSize[1]);
+        holoImages.resize(batchSize * numImages);
 
-    //     // Convert cv::Mats(float) to D2DArray and save to HDF5 file
+        ImageUtils::removeOutliers(darkMat, kernelSize, threshold);
+        ImageUtils::removeOutliers(flatMat, kernelSize, threshold);
+    }
 
-    // }
+    FArray Preprocessor::processBatch(const U16Array &rawData)
+    {
+        holoMats = ImageUtils::convertVecToMats(rawData, numImages * batchSize, imSize[0], imSize[1]);
+        for (int i = 0; i < holoMats.size(); i++) {
+            ImageUtils::removeOutliers(holoMats[i], kernelSize, threshold);
+            holoMats[i] = (holoMats[i] - darkMat) / flatMat;
+            ImageUtils::removeStripes(holoMats[i], rangeRows, rangeCols, movmeanSize, method);
+        }
+
+        ImageUtils::convertMatsToImgs(holoMats, holoImages, imSize[0], imSize[1]);
+        for (int i = 0; i < batchSize; i++) {
+            for (int j = 1; j < numImages; j++) {
+                ImageUtils::registerImage(holoImages[i * numImages], holoImages[j + i * numImages]);
+            }
+        }
+
+        ImageUtils::convertImgsToVec(holoImages, holograms.data(), imSize[0], imSize[1]);
+        return holograms;
+    }
 
     FArray reconstruct_ctf(const FArray &holograms, int numImages, const IntArray &imSize, const F2DArray &fresnelnumbers, float lowFreqLim,
                            float highFreqLim, float betaDeltaRatio, const IntArray &padSize, CUDAUtils::PaddingType padType, float padValue)

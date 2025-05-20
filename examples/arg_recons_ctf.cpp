@@ -3,7 +3,6 @@
 #include <iostream>
 
 #include "holo_recons.h"
-#include "imageio_utils.h"
 
 int main(int argc, char* argv[])
 {

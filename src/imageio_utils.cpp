@@ -584,6 +584,56 @@ bool IOUtils::readPhasegrams(const std::string &filename, const std::string &dat
     return true;
 }
 
+bool IOUtils::readSingleGram(const std::string &filename, const std::string &datasetName, U16Array &phase, std::vector<hsize_t> &dims)
+{
+    hid_t file_id, dataset_id, dataspace_id;
+    
+    file_id = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+    if (file_id < 0) {
+        std::cerr << "Error opening file: " << filename << std::endl;
+        return false;
+    }
+
+    dataset_id = H5Dopen2(file_id, datasetName.c_str(), H5P_DEFAULT);
+    if (dataset_id < 0) {
+        std::cerr << "Error opening dataset: " << datasetName << std::endl;
+        H5Fclose(file_id);
+        return false;
+    }
+
+    // 确保数据集维度是2D
+    dataspace_id = H5Dget_space(dataset_id);
+    if (dataspace_id < 0) {
+        std::cerr << "Error getting dataspace for dataset: " << datasetName << std::endl;
+        H5Dclose(dataset_id);
+        H5Fclose(file_id);
+        return false;
+    }
+
+    int rank = H5Sget_simple_extent_ndims(dataspace_id);
+    if (rank != 2) {
+        std::cerr << "Error: DataSet is not 2-dimensional!" << std::endl;
+        H5Sclose(dataspace_id);
+        H5Dclose(dataset_id);
+        H5Fclose(file_id);
+        return false;
+    }
+
+    // 获取维度信息并读取数据到U16Array
+    dims.resize(rank);
+    H5Sget_simple_extent_dims(dataspace_id, dims.data(), nullptr);
+
+    phase.resize(dims[0] * dims[1]);
+    H5Dread(dataset_id, H5T_NATIVE_UINT16, H5S_ALL, H5S_ALL, H5P_DEFAULT, phase.data());
+
+    // 关闭资源
+    H5Sclose(dataspace_id);
+    H5Dclose(dataset_id);
+    H5Fclose(file_id);
+
+    return true;
+}
+
 bool IOUtils::savePhasegrams(const std::string &filename, const std::string &datasetName, const FArray &reconsPhase, int rows, int cols)
 {
     hid_t file_id, dataset_id, dataspace_id;
@@ -823,6 +873,72 @@ bool IOUtils::read4DimData(const std::string &filename, const std::string &datas
 
     // 调整数据大小并读取
     status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id, H5P_DEFAULT, data.data());
+    if (status < 0) {
+        std::cerr << "Error reading dataset" << std::endl;
+        H5Sclose(memspace_id);
+        H5Sclose(dataspace_id);
+        H5Dclose(dataset_id);
+        H5Fclose(file_id);
+        return false;
+    }
+
+    // 关闭资源
+    H5Sclose(memspace_id);
+    H5Sclose(dataspace_id);
+    H5Dclose(dataset_id);
+    H5Fclose(file_id);
+
+    return true;
+}
+
+bool IOUtils::read4DimData(const std::string &filename, const std::string &datasetName, U16Array &data, hsize_t offset, hsize_t count)
+{
+    hid_t file_id, dataset_id, dataspace_id, memspace_id;
+    herr_t status;
+
+    // 打开H5文件和数据集
+    file_id = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+    if (file_id < 0) {
+        std::cerr << "Error opening file: " << filename << std::endl;
+        return false;
+    }
+
+    dataset_id = H5Dopen2(file_id, datasetName.c_str(), H5P_DEFAULT);
+    if (dataset_id < 0) {
+        std::cerr << "Error opening dataset: " << datasetName << std::endl;
+        H5Fclose(file_id);
+        return false;
+    }
+
+    // 获取数据空间
+    dataspace_id = H5Dget_space(dataset_id);
+    if (dataspace_id < 0) {
+        std::cerr << "Error getting dataspace" << std::endl;
+        H5Dclose(dataset_id);
+        H5Fclose(file_id);
+        return false;
+    }
+
+    // 获取数据维度
+    hsize_t dims[4]; 
+    status = H5Sget_simple_extent_dims(dataspace_id, dims, nullptr);
+    if (status < 0) {
+        std::cerr << "Error getting dimensions" << std::endl;
+        H5Sclose(dataspace_id);
+        H5Dclose(dataset_id);
+        H5Fclose(file_id);
+        return false;
+    }
+
+    // 设置读取区域
+    hsize_t offset_[4] = {offset, 0, 0, 0};
+    hsize_t count_[4] = {count, dims[1], dims[2], dims[3]};
+    H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset_, nullptr, count_, nullptr);
+
+    // 创建内存空间
+    memspace_id = H5Screate_simple(4, count_, nullptr);
+
+    status = H5Dread(dataset_id, H5T_NATIVE_UINT16, memspace_id, dataspace_id, H5P_DEFAULT, data.data());
     if (status < 0) {
         std::cerr << "Error reading dataset" << std::endl;
         H5Sclose(memspace_id);

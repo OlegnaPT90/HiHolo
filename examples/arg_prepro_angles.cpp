@@ -6,7 +6,7 @@
 
 int main(int argc, char* argv[])
 {
-    argparse::ArgumentParser program("data_preprocessing");
+    argparse::ArgumentParser program("data_prepro_angles");
     program.set_usage_max_line_width(120);
 
     // Add arguments to ArgumentParser object
@@ -18,12 +18,9 @@ int main(int argc, char* argv[])
            .help("output hdf5 file of preprocessed data")
            .required();
            
-    program.add_argument("--is_apwp", "-a")
-           .help("whether the phase are retrieved by apwp")
-           .default_value(false).implicit_value(true);
-
-    program.add_argument("--output_probe_file", "-p")
-           .help("output hdf5 file of preprocessed probe data");
+    program.add_argument("--batch_size", "-b")
+           .help("batch size of angles processed at a time")
+           .required().scan<'i', int>();
 
     program.add_argument("--kernel_size", "-k")
            .help("kernel size for removing outliers")
@@ -48,7 +45,7 @@ int main(int argc, char* argv[])
     program.add_argument("--removal_method", "-M")
            .help("calculation method for removing stripes")
            .default_value("mul");
-
+    
     try {
         program.parse_args(argc, argv);
     } catch (const std::runtime_error& err) {
@@ -57,24 +54,24 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // Read raw data and image size from user inputs
-    U16Array rawData, dark, flat;
     std::vector<hsize_t> dims;
-    std::string inputFile = program.get<std::string>("-i");
-    std::vector<std::string> datasetNames {"data", "dark", "flat"};
-    IOUtils::readRawData(inputFile, datasetNames, dims, rawData, dark, flat);
-
-    int numImages = static_cast<int>(dims[0]);
-    int rows = static_cast<int>(dims[1]);
-    int cols = static_cast<int>(dims[2]);
-    IntArray imSize {rows, cols};
-
-    bool isAPWP = program.get<bool>("-a");
-    if (isAPWP) {
-       if (rawData.size() != flat.size()) {
-           throw std::runtime_error("APWP requires the same number of probe and object images!");
-       }
+    std::string input = program.get<std::string>("-i");
+    U16Array dark, flat;
+    IOUtils::readSingleGram(input, "dark", dark, dims);
+    IOUtils::readSingleGram(input, "flat", flat, dims);
+    IOUtils::readDataDims(input, "data", dims);
+    if (dims.size() != 4) {
+        throw std::runtime_error("Invalid holograms or dimensions!");
     }
+
+    int totalAngles = static_cast<int>(dims[0]);
+    int numHolograms = static_cast<int>(dims[1]);
+    int rows = static_cast<int>(dims[2]);
+    int cols = static_cast<int>(dims[3]);
+    IntArray imSize {rows, cols};
+    
+    int batchSize = program.get<int>("-b");
+    U16Array rawData(batchSize * numHolograms * rows * cols);
 
     int kernelSize = program.get<int>("-k");
     float threshold = program.get<float>("-t");
@@ -83,33 +80,26 @@ int main(int argc, char* argv[])
     int movmeanSize = program.get<int>("-m");
     std::string method = program.get<std::string>("-M");
 
-    std::string outputFile = program.get<std::string>("-o");
-    if (inputFile == outputFile) {
-        throw std::runtime_error("Input and output files cannot be the same!");
+    std::string output = program.get<std::string>("-o");
+    if (input == output) {
+        throw std::runtime_error("Input and output file cannot be the same!");
     }
-    
-    std::string outputProbeFile;
-    if (isAPWP) {
-        if (!program.is_used("-p")) {
-            throw std::runtime_error("When APWP is enabled, --output_probe_file must be specified!");
-        }
-        outputProbeFile = program.get<std::string>("-p");
-        if (inputFile == outputProbeFile || outputFile == outputProbeFile) {
-            throw std::runtime_error("Output probe file cannot be the same as input or output file!");
-        }
-    }
+    IOUtils::createFileDataset(output, "holodata", dims);
 
+    auto preprocessor = PhaseRetrieval::Preprocessor(batchSize, numHolograms, imSize, dark, flat,
+                                                     kernelSize, threshold, rangeRows, rangeCols,
+                                                     movmeanSize, method);
+    FArray holograms;
     auto start = std::chrono::high_resolution_clock::now();
-    F2DArray result = PhaseRetrieval::preprocess_data(rawData, dark, flat, numImages, imSize,
-                                                      isAPWP, kernelSize, threshold, rangeRows,
-                                                      rangeCols, movmeanSize, method);
 
-    IOUtils::save3DGrams(outputFile, "holodata", result[0], numImages, rows, cols);
-    if (isAPWP) {
-        IOUtils::save3DGrams(outputProbeFile, "holodata", result[1], numImages, rows, cols);
-    }    
+    for (int i = 0; i < totalAngles / batchSize; i++) {
+       std::cout << "Processing batch " << i << std::endl;
+       IOUtils::read4DimData(input, "data", rawData, i * batchSize, batchSize);
+       holograms = preprocessor.processBatch(rawData);
+       IOUtils::write4DimData(output, "holodata", holograms, dims, i * batchSize);
+    }
+        
     auto end = std::chrono::high_resolution_clock::now();
-    
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Elapsed time: " << duration.count() << " milliseconds" << std::endl;
 

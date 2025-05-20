@@ -24,10 +24,27 @@ namespace PhaseRetrieval
     class Preprocessor
     {
         private:
+            int batchSize;
+            int numImages;
+            IntArray imSize;
+            FArray holograms;
+            std::vector<cv::Mat> holoMats;
+            std::vector<itk::simple::Image> holoImages;
+            cv::Mat darkMat;
+            cv::Mat flatMat;
+
             int kernelSize;
             float threshold;
             int rangeRows;
             int rangeCols;
+            int movmeanSize;
+            std::string method;
+
+        public:
+            Preprocessor(int batchsize, int numimages, const IntArray &imsize, const U16Array &dark, const U16Array &flat, int kernelsize,
+                         float in_threshold, int rangerows, int rangecols, int movmeansize, const std::string &in_method);
+            FArray processBatch(const U16Array &rawData);
+            ~Preprocessor() = default;
     };
 
     class CTFReconstructor
