@@ -8,11 +8,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 添加用户可配置的选项
 option(USE_BUNDLED_DEPENDENCIES "使用捆绑的依赖项" OFF)
 
-# 设置可配置的库路径
-set(ARGPARSE_DIR "/home/hug/workspace/software/argparse" CACHE PATH "argparse 库的路径")
-set(SimpleITK_DIR "/home/hug/workspace/software/SimpleITK-build/SimpleITK-build" CACHE PATH "SimpleITK 配置目录")
-set(ITK_DIR "/home/hug/workspace/software/SimpleITK-build/ITK-build" CACHE PATH "ITK 配置目录")
-
 # 查找必要的包
 find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui imgcodecs)
 find_package(CUDA REQUIRED)
@@ -87,6 +82,8 @@ foreach(target ${APP_TARGETS})
     target_compile_definitions(${target} PRIVATE ${MPI_CXX_COMPILE_DEFINITIONS})
     # 添加MPI编译选项
     target_compile_options(${target} PRIVATE ${MPI_CXX_COMPILE_OPTIONS})
-    # 添加MPI链接选项
-    target_link_options(${target} PRIVATE ${MPI_CXX_LINK_FLAGS})
+    # 使用更安全的方式处理MPI链接选项
+    if(MPI_CXX_LINK_FLAGS)
+        set_property(TARGET ${target} APPEND_STRING PROPERTY LINK_FLAGS " ${MPI_CXX_LINK_FLAGS}")
+    endif()
 endforeach()
