@@ -71,6 +71,8 @@ namespace CUDAUtils
 // Normalize the inverse FFT result
 __global__ void scaleComplexData(cuFloatComplex* data, int numel, float scale);
 __global__ void scaleFloatData(float *data, int numel, float scale);
+__global__ void scaleExpData(float *data, int numel, float scale);
+__global__ void absData(float *data, int numel);
 
 // Generate the FFT frequency and shift it
 __global__ void genShiftedFFTFreq(float* output, int size, float spacing);
@@ -96,8 +98,12 @@ __global__ void backPropProcess(cuFloatComplex *complexWave, cuFloatComplex *pro
 __global__ void computeComplexData(cuFloatComplex *complexData, const float *amplitude, const float *phase, int numel);
 __global__ void computeAmplitude(const cuFloatComplex *complexWave, float *amplitude, int numel);
 __global__ void computePhase(const cuFloatComplex *complexWave, float *phase, int numel);
+
 __global__ void setAmplitude(cuFloatComplex *complexWave, const float *targetAmplitude, int numel);
 __global__ void setPhase(cuFloatComplex *complexWave, const float *targetPhase, int numel);
+__global__ void setAmpPhase0(cuFloatComplex *complexWave, const float *targetAmplitude, int numel);
+__global__ void setPhaseAmp1(cuFloatComplex *complexWave, const float *targetPhase, int numel);
+__global__ void computeLogAbs(float *data, const cuFloatComplex *complexWave, int numel);
 
 __global__ void addWaveField(cuFloatComplex *complexWave, const cuFloatComplex *waveField, int numel);
 __global__ void subWaveField(cuFloatComplex *complexWave, const cuFloatComplex *waveField, int numel);
@@ -114,6 +120,7 @@ __global__ void adjustComplexWave(cuFloatComplex *complexWave, const float *supp
 __global__ void limitAmplitude(cuFloatComplex *complexWave, const float *amplitude, const float *targetAmplitude, int numel);
 __global__ void sqrtIntensity(float *amplitude, int numel);
 
+__global__ void computeSquError(float *error, const cuFloatComplex *propedWave, const float *measuredHologram, int numel);
 __global__ void updateDM(cuFloatComplex *probe, const cuFloatComplex *probeWave, const cuFloatComplex *complexWave, int numel);
 
 // Initialize data with a given value
@@ -136,6 +143,7 @@ __global__ void subtractConstant(cuFloatComplex *data, const float constant, int
 
 __global__ void genRegComponent(float *component, float fresnelNumber, int numel);
 __device__ float erfc_approx(float x);
+__device__ float computeWeight(float a, float b, float h, float x);
 __global__ void computeErfcWeights(float* data, float param, int numel);
 __global__ void genRegWeights(float* data, float lim1, float lim2, int numel);
 
@@ -148,5 +156,16 @@ __global__ void displayMatrix(const float* matrix, int rows, int cols);
 __global__ void displayComplexMatrix(const cuFloatComplex* matrix, int rows, int cols);
 
 __global__ void floatToComplex(const float* data, cuFloatComplex* complexData, int numel);
+
+__global__ void grid_project_k(const float *grid, float *project, int nx, int nz, float a, float b, 
+                               float h, float cosp, float sinp, int start, int end, float border);
+__global__ void grid_back_project_k(float *grid, const float *project, int nx, int nz, float a, float b, 
+                                    float h, float cosp, float sinp, int start, int end, float border);
+__global__ void grid_max_map_k(float *grid, const float *project, int nx, int nz, float a, float b,
+                               float h, float cosp, float sinp, int start, int end, float border);
+
+__global__ void limitGrid(float *grid, float constraint, int numel);
+__global__ void updateProject(float *project, const float *factor, int numel);
+__global__ void updateGrid(float *grid, const float *newGrid, int totalAngles, int numel);
 
 #endif

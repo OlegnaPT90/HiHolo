@@ -110,7 +110,54 @@ __global__ void setPhase(cuFloatComplex *complexWave, const float *targetPhase, 
         float amplitude = hypotf(complexWave[idx].x, complexWave[idx].y);
         complexWave[idx] = make_cuFloatComplex(amplitude * cosf(targetPhase[idx]), amplitude * sinf(targetPhase[idx]));
     }
+}
 
+__global__ void setPhaseAmp1(cuFloatComplex *complexWave, const float *targetPhase, int numel)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        float amplitude = hypotf(complexWave[idx].x, complexWave[idx].y);
+        if (amplitude > 1.0f) {
+            amplitude = 1.0f;
+        }
+        complexWave[idx] = make_cuFloatComplex(amplitude * cosf(targetPhase[idx]), amplitude * sinf(targetPhase[idx]));
+    }
+}
+
+__global__ void setAmpPhase0(cuFloatComplex *complexWave, const float *targetAmplitude, int numel)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        complexWave[idx] = make_cuFloatComplex(targetAmplitude[idx], 0.0f);
+    }
+}
+
+__global__ void computeLogAbs(float *data, const cuFloatComplex *complexWave, int numel)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        float amp = hypotf(complexWave[idx].x, complexWave[idx].y);
+        if (amp > 1.0f) {
+            amp = 1.0f;
+        }
+        data[idx] = -1.0f * logf(amp);
+    }
+}
+
+__global__ void scaleExpData(float *data, int numel, float scale)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        data[idx] = expf(data[idx] * scale);
+    }
+}
+
+__global__ void absData(float *data, int numel)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        data[idx] = fabsf(data[idx]);
+    }
 }
 
 __global__ void initByPhase(cuFloatComplex *data, const float *phase, int numel)
@@ -176,6 +223,15 @@ __global__ void sqrtIntensity(float *amplitude, int numel)
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < numel) {
         amplitude[idx] = sqrtf(amplitude[idx]);
+    }
+}
+
+__global__ void computeSquError(float *error, const cuFloatComplex *propedWave, const float *measuredHologram, int numel)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        float tmp = hypotf(propedWave[idx].x, propedWave[idx].y);
+        error[idx] = powf(tmp - measuredHologram[idx], 2);
     }
 }
 
@@ -476,6 +532,21 @@ __device__ float erfc_approx(float x) {
     return x >= 0.0f ? tau : 2.0f - tau;
 }
 
+__device__ float computeWeight(float a, float b, float h, float x)
+{
+    if(x > b) {
+        if(x < a) {
+            return 1 - h * 0.5f / (a - b) * (a - x) * (a - x);
+        }
+        return 1;
+    } else {
+        if(x < -b) {
+            return h * 0.5f / (a - b) * (a + x) * (a + x);
+        }
+        return h * x + 0.5f;
+    }
+}
+
 __global__ void computeErfcWeights(float* data, float param, int numel)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -541,7 +612,6 @@ __global__ void propProcess(cuFloatComplex *propagatedWave, cuFloatComplex *comp
     if (idx < numel * batchSize) {
         propagatedWave[idx] = cuCmulf(kernel[idx], complexWave[waveIdx]);
     }
-
 }
 
 __global__ void backPropProcess(cuFloatComplex *complexWave, cuFloatComplex *propagatedWave, cuFloatComplex *kernel, int numel, int batchSize)
@@ -555,6 +625,122 @@ __global__ void backPropProcess(cuFloatComplex *complexWave, cuFloatComplex *pro
             sum = cuCaddf(sum, cuCmulf(propagatedWave[idx], conjKernel));
         }
         complexWave[col] = sum;
+    }
+}
+
+__global__ void grid_project_k(const float *grid, float *project, int nx, int nz, float a, float b, 
+                               float h, float cosp, float sinp, int start, int end, float border)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = end - start;
+    if (idx >= total) return;
+
+    int i = start + idx;
+    // 直接计算x_i和y_i
+    int global_x = (i / nz) % nx;
+    int global_y = i / (nx * nz);
+    float x_i = static_cast<float>(global_x) - border;
+    float y_i = static_cast<float>(global_y) - border;
+
+    float pos = x_i * cosp - y_i * sinp + 0.5f * nx;
+
+    if (pos > -a && pos < nx + a) {
+        int lb = static_cast<int>(pos - a);
+        float w1 = computeWeight(a, b, h, (++lb) - pos);
+        float w2 = computeWeight(a, b, h, (++lb) - pos) - w1;
+        float w3 = 1 - w1 - w2;
+        int index = lb * nz;
+
+        // 使用原子操作确保线程安全
+        atomicAdd(&project[index], grid[i] * w1);
+        atomicAdd(&project[index + nz], grid[i] * w2);
+        atomicAdd(&project[index + 2 * nz], grid[i] * w3);
+    }
+}
+
+__global__ void grid_back_project_k(float *grid, const float *project, int nx, int nz, float a, float b, 
+                                    float h, float cosp, float sinp, int start, int end, float border)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= (end - start)) return;
+
+    int i = start + idx;
+    int global_x = (i / nz) % nx;
+    int global_y = i / (nx * nz);
+    float x_i = static_cast<float>(global_x) - border;
+    float y_i = static_cast<float>(global_y) - border;
+    
+    float pos = x_i * cosp - y_i * sinp + 0.5f * nx;
+
+    if (pos > -a && pos < nx + a) {
+        int lb = static_cast<int>(pos - a);
+        float w1 = computeWeight(a, b, h, (++lb) - pos);
+        float w2 = computeWeight(a, b, h, (++lb) - pos) - w1;
+        float w3 = 1 - w1 - w2;
+        int index = lb * nz;
+
+        float tmp = project[index] * w1 +
+                    project[index + nz] * w2 +
+                    project[index + 2 * nz] * w3;
+        grid[i] += tmp;
+    }
+}
+
+__global__ void grid_max_map_k(float *grid, const float *project, int nx, int nz, float a, float b,
+                               float h, float cosp, float sinp, int start, int end, float border)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= (end - start)) return;
+
+    int i = start + idx;
+    int global_x = (i / nz) % nx;
+    int global_y = i / (nx * nz);
+    float x_i = static_cast<float>(global_x) - border;
+    float y_i = static_cast<float>(global_y) - border;
+    
+    float pos = x_i * cosp - y_i * sinp + 0.5f * nx;
+
+    if (pos > -a && pos < nx + a) {
+        int lb = static_cast<int>(pos - a);
+        float w1 = computeWeight(a, b, h, (++lb) - pos);
+        float w2 = computeWeight(a, b, h, (++lb) - pos) - w1;
+        float w3 = 1 - w1 - w2;
+        int index = lb * nz + (i % nz);
+
+        float tmp = project[index] * w1 +
+                    project[index + nz] * w2 +
+                    project[index + 2 * nz] * w3;
+        if(tmp < grid[i]) {
+            grid[i] = tmp;
+        }
+    }
+}
+
+__global__ void limitGrid(float *grid, float constraint, int numel)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        if (grid[idx] > constraint) {
+            grid[idx] = 0;
+        }
+    }
+}
+
+__global__ void updateGrid(float *grid, const float *newGrid, int totalAngles, int numel)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        grid[idx] *= newGrid[idx] / totalAngles;
+    }
+}
+
+__global__ void updateProject(float *project, const float *factor, int numel)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numel) {
+        if (project[idx] != 0) {
+            project[idx] = factor[idx] / project[idx];
+        }
     }
 }
 
