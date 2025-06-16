@@ -41,6 +41,7 @@ set(COMMON_CUDA_SRCS
     src/Projector.cu
     src/holo_recons.cu
     src/cuda_utils.cu
+    src/IRPSolver.cu
 )
 
 # 定义所有应用程序
@@ -50,6 +51,7 @@ set(APP_TARGETS
     holo_recons_ctf_angles
     holo_recons_ite_angles
     holo_distance_calibr
+    holo_recons_pirp
     #holo_data_preprocess
     #holo_data_prepro_angles
 )
@@ -60,6 +62,7 @@ add_executable(holo_recons_ctf examples/arg_recons_ctf.cpp ${COMMON_CPP_SRCS} ${
 add_executable(holo_recons_ctf_angles examples/arg_recons_ctf_angles.cpp ${COMMON_CPP_SRCS} ${COMMON_CUDA_SRCS})
 add_executable(holo_recons_ite_angles examples/arg_recons_ite_angles.cpp ${COMMON_CPP_SRCS} ${COMMON_CUDA_SRCS})
 add_executable(holo_distance_calibr examples/arg_distance_calibr.cpp ${COMMON_CPP_SRCS} ${COMMON_CUDA_SRCS})
+add_executable(holo_recons_pirp examples/recons_pirp.cpp ${COMMON_CPP_SRCS} ${COMMON_CUDA_SRCS})
 #add_executable(holo_data_preprocess examples/arg_data_prepro.cpp ${COMMON_CPP_SRCS} ${COMMON_CUDA_SRCS})
 #add_executable(holo_data_prepro_angles examples/arg_prepro_angles.cpp ${COMMON_CPP_SRCS} ${COMMON_CUDA_SRCS})
 
@@ -71,7 +74,7 @@ set(COMMON_LIBS
     ${CUDA_nppidei_LIBRARY}
     ${CUDA_nppc_LIBRARY}
     ${HDF5_LIBRARIES}
-    ${SimpleITK_LIBRARIES}
+    #${SimpleITK_LIBRARIES}
     ${GSL_LIBRARIES}
     ${MPI_CXX_LIBRARIES}
 )
