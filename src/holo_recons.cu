@@ -534,7 +534,7 @@ namespace PhaseRetrieval
         return result;
     }
 
-    F2DArray reconstruct_bipepi(const FArray &holograms, int numImages, const IntArray &measSize, const F2DArray &fresnelNumbers, int iterations,
+    F2DArray reconstruct_epi(const FArray &holograms, int numImages, const IntArray &measSize, const F2DArray &fresnelNumbers, int iterations,
                                 const IntArray &imSize, const FArray &initialPhase, const FArray &initialAmplitude, float minPhase, float maxPhase,
                                 float minAmplitude, float maxAmplitude, const IntArray &support, float outsideValue, PMagnitudeCons::Type projectionType,
                                 CUDAPropKernel::Type kernelType, bool calcError)
@@ -615,7 +615,7 @@ namespace PhaseRetrieval
         }
         WaveField waveField(imSize[0], imSize[1], complexWave);
 
-        ProjectionSolver *projectionSolver = new ProjectionSolver(PM, PS, waveField, ProjectionSolver::BIPEPI, FArray(), calcError);
+        ProjectionSolver *projectionSolver = new ProjectionSolver(PM, PS, waveField, ProjectionSolver::EPI, FArray(), calcError);
         
         // Reconstruct wave field by iterative projection algorithm
         auto iterResult = projectionSolver->execute(iterations);
@@ -629,7 +629,7 @@ namespace PhaseRetrieval
         reconsPsi.getPhase(phase);
         reconsPsi.getAmplitude(amplitude);
 
-        F2DArray result(3, FArray(imSize[0] * imSize[1]));
+        F2DArray result(2, FArray(imSize[0] * imSize[1]));
         cudaMemcpy(result[0].data(), phase, imSize[0] * imSize[1] * sizeof(float), cudaMemcpyDeviceToHost);
         cudaMemcpy(result[1].data(), amplitude, imSize[0] * imSize[1] * sizeof(float), cudaMemcpyDeviceToHost);
 

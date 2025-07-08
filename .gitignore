@@ -5,3 +5,4 @@ holo_*
 build*
 *.so
 Documents/
+python/plots/

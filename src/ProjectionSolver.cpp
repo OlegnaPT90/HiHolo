@@ -11,7 +11,7 @@ ProjectionSolver::ProjectionSolver(Projector *PM, Projector *PS, const WaveField
     // Map holographic algorithm to corresponding update method
     std::unordered_map<Algorithm, Method> methodMap {{AP, &ProjectionSolver::updateStepAP}, {RAAR, &ProjectionSolver::updateStepRAAR}, 
                                                      {HIO, &ProjectionSolver::updateStepHIO}, {DRAP, &ProjectionSolver::updateStepDRAP},
-                                                     {BIPEPI, &ProjectionSolver::updateStepAP}};
+                                                     {EPI, &ProjectionSolver::updateStepAP}};
                                                      
     auto iterator = methodMap.find(algorithm);
     if (iterator != methodMap.end()) {
@@ -90,7 +90,7 @@ IterationResult ProjectionSolver::execute(int iterations)
     
     auto magnitudeResult = projMagnitude->project(psi);
     auto objectResult = projObject->project(magnitudeResult.projection);
-    if (algorithm == BIPEPI) {
+    if (algorithm == EPI) {
         psi = objectResult.projection;
     } else {
         psi = magnitudeResult.projection;

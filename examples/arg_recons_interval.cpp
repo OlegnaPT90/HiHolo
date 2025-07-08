@@ -33,7 +33,7 @@ int main(int argc, char* argv[])
            .nargs(2);
 
     program.add_argument("--algorithm", "-a")
-           .help("phase retrieval algorithm [0:ap, 1:raar, 2:hio, 3:drap, 4:apwp, 5:bipepi]")
+           .help("phase retrieval algorithm [0:ap, 1:raar, 2:hio, 3:drap, 4:apwp, 5:epi]")
            .default_value(0).scan<'i', int>();
 
     program.add_argument("--plot_interval", "-pi")
@@ -145,7 +145,7 @@ int main(int argc, char* argv[])
        case ProjectionSolver::HIO: std::cout << "HIO"; break;
        case ProjectionSolver::DRAP: std::cout << "DRAP"; break;
        case ProjectionSolver::APWP: std::cout << "AP with Probe"; break;
-       case ProjectionSolver::BIPEPI: std::cout << "BIPEPI"; break;
+       case ProjectionSolver::EPI: std::cout << "EPI"; break;
        default: std::cout << "Unknown"; break;
     }
     std::cout << std::endl;
@@ -233,9 +233,9 @@ int main(int argc, char* argv[])
     std::cout << std::endl;
 
     IntArray newSize;
-    if (algorithm == ProjectionSolver::BIPEPI) {
+    if (algorithm == ProjectionSolver::EPI) {
        if (padSize.empty()) {
-           throw std::runtime_error("Padding size is required for Bipepi algorithm!");
+           throw std::runtime_error("Padding size is required for EPI algorithm!");
        }
        newSize = {rows + 2 * padSize[0], cols + 2 * padSize[1]};
     }
@@ -249,16 +249,16 @@ int main(int argc, char* argv[])
 //     auto start = std::chrono::high_resolution_clock::now();
     
     for (int i = 0; i < iterations / plotInterval; ++i) {
-       if (algorithm == ProjectionSolver::BIPEPI) {
-           result = PhaseRetrieval::reconstruct_bipepi(holograms, numHolograms, imSize, fresnelNumbers, plotInterval, newSize,
-                                                       initialPhase, initialAmplitude, phaLimits[0], phaLimits[1], ampLimits[0], 
-                                                       ampLimits[1], support, outsideValue, projectionType, kernelMethod, calcError);
+       if (algorithm == ProjectionSolver::EPI) {
+           result = PhaseRetrieval::reconstruct_epi(holograms, numHolograms, imSize, fresnelNumbers, plotInterval, newSize,
+                                                    initialPhase, initialAmplitude, phaLimits[0], phaLimits[1], ampLimits[0], 
+                                                    ampLimits[1], support, outsideValue, projectionType, kernelMethod, calcError);
 
            initialPhase = result[0];
            initialAmplitude = result[1];
            if (calcError) {
-              std::copy(result[3].begin(), result[3].end(), residuals[0].begin() + i * plotInterval);
-              std::copy(result[4].begin(), result[4].end(), residuals[1].begin() + i * plotInterval);
+              std::copy(result[2].begin(), result[2].end(), residuals[0].begin() + i * plotInterval);
+              std::copy(result[3].begin(), result[3].end(), residuals[1].begin() + i * plotInterval);
            }
 
            ImageUtils::displayPhase(result[0], newSize[0], newSize[1], "phase reconstructed by " + \
@@ -297,7 +297,7 @@ int main(int argc, char* argv[])
 //     }
 //     std::cout << std::endl;
 
-    if (algorithm == ProjectionSolver::BIPEPI) {
+    if (algorithm == ProjectionSolver::EPI) {
        imSize = newSize;
     }
 
