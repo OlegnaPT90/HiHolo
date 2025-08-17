@@ -30,7 +30,7 @@ namespace ImageUtils
     //IntArray registerImage(const itk::simple::Image &fixedImage, itk::simple::Image &movingImage);
     //Int2DArray registerImages(float *data, int numImages, int rows, int cols);
 
-    D2DArray calibrateDistance(const DArray &maxPSD, const DArray &nz, double length, double pixelSize, double stepSize);
+    D2DArray calibrateDistance(const DArray &maxFre, const DArray &nz, double length, double pixelSize, double stepSize);
     double computePSD(const cv::Mat &image, int direction, cv::Mat &profile, cv::Mat &fre);
     DArray computePSDs(const std::vector<cv::Mat> &images, int direction, std::vector<cv::Mat> &profiles, std::vector<cv::Mat> &frequencies);
 

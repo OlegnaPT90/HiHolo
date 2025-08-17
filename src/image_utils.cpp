@@ -233,12 +233,12 @@ void ImageUtils::removeStripes(cv::Mat &image, int rangeRows, int rangeCols, int
 
 DArray ImageUtils::computePSDs(const std::vector<cv::Mat> &images, int direction, std::vector<cv::Mat> &profiles, std::vector<cv::Mat> &frequencies)
 {
-    DArray maxPSD(images.size());
+    DArray maxFre(images.size());
     for (int i = 0; i < images.size(); i++) {
-        maxPSD[i] = computePSD(images[i], direction, profiles[i], frequencies[i]);
+        maxFre[i] = computePSD(images[i], direction, profiles[i], frequencies[i]);
     }
 
-    return maxPSD;
+    return maxFre;
 }
 
 D2DArray ImageUtils::calibrateDistance(const DArray &maxPSD, const DArray &nz, double length, double pixelSize, double stepSize)
@@ -290,7 +290,7 @@ double ImageUtils::computePSD(const cv::Mat &image, int direction, cv::Mat &prof
 
     // Sum along the column or row direction
     // 0 for column, 1 for row
-    cv::reduce(psd, profile, direction, cv::REDUCE_SUM, CV_32F);
+    cv::reduce(psd, profile, direction, cv::REDUCE_SUM, CV_64F);
 
     int size;
     if (direction == 0) { // 如果沿列方向归约，使用列数
@@ -300,10 +300,10 @@ double ImageUtils::computePSD(const cv::Mat &image, int direction, cv::Mat &prof
     }
     
     // 创建频率向量，只取一半（到奈奎斯特频率），作为行向量
-    fre = cv::Mat(1, size / 2, CV_32F);
-    float* freData = reinterpret_cast<float*>(fre.data);
+    fre = cv::Mat(1, size / 2, CV_64F);
+    double* freData = reinterpret_cast<double*>(fre.data);
     for (int i = 0; i < size / 2; i++) {
-        freData[i] = static_cast<float>(i) / static_cast<float>(size);
+        freData[i] = static_cast<double>(i) / static_cast<double>(size);
     }
     
     if (profile.rows > 1) {
@@ -315,11 +315,19 @@ double ImageUtils::computePSD(const cv::Mat &image, int direction, cv::Mat &prof
         profile = profile.colRange(0, fre.cols);
     }
 
-    // Compute the maximum value
-    double maxVal;
-    cv::minMaxLoc(profile, nullptr, &maxVal);
+    // 去掉第一个点
+    profile = profile.colRange(1, profile.cols);
+    fre = fre.colRange(1, fre.cols);
 
-    return maxVal;
+    // Compute the maximum value and its index (coordinate)
+    cv::Point maxLoc;
+    cv::minMaxLoc(profile, nullptr, nullptr, nullptr, &maxLoc);
+
+    // profile is a row vector
+    int maxIndex = maxLoc.x;
+    double maxFre = fre.at<double>(0, maxIndex);
+
+    return maxFre;
 }
 
 void ImageUtils::displayNDArray(F2DArray &images, int rows, int cols, const std::vector<std::string> &imgName)

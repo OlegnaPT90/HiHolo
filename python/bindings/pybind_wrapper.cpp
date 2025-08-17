@@ -72,7 +72,7 @@ PYBIND11_MODULE(hiholo, m) {
           py::arg("windowSize") = 5,
           py::arg("method") = "mul");
 
-    m.def("computePSDs", [](py::array_t<float> images_array, int direction) {
+    m.def("computePSDs", [](py::array_t<double> images_array, int direction) {
           py::buffer_info buf = images_array.request();
           
           // Parse dimensions from numpy array
@@ -88,24 +88,24 @@ PYBIND11_MODULE(hiholo, m) {
           
           // Convert numpy array to vector of cv::Mat
           std::vector<cv::Mat> cvImages(numImages);
-          float* data_ptr = static_cast<float*>(buf.ptr);
+          double* data_ptr = static_cast<double*>(buf.ptr);
           for (int i = 0; i < numImages; i++) {
-              cvImages[i] = cv::Mat(rows, cols, CV_32F, data_ptr + i * rows * cols);
+              cvImages[i] = cv::Mat(rows, cols, CV_64F, data_ptr + i * rows * cols);
           }
           
           std::vector<cv::Mat> profiles(numImages);
           std::vector<cv::Mat> frequencies(numImages);
           
-          DArray maxPSDs = ImageUtils::computePSDs(cvImages, direction, profiles, frequencies);
+          DArray maxFres = ImageUtils::computePSDs(cvImages, direction, profiles, frequencies);
           
           // Convert results using efficient memory operations
           py::list result_list;
-          result_list.append(py::cast(maxPSDs));
+          result_list.append(py::cast(maxFres));
           
           py::list frequencies_list;
           for (const auto& freq : frequencies) {
               // Create std::vector from cv::Mat data for efficient conversion
-              DArray freq_vec(freq.ptr<float>(), freq.ptr<float>() + freq.total());
+              DArray freq_vec(freq.ptr<double>(), freq.ptr<double>() + freq.total());
               frequencies_list.append(py::cast(freq_vec));
           }
           result_list.append(frequencies_list);
@@ -113,7 +113,7 @@ PYBIND11_MODULE(hiholo, m) {
           py::list profiles_list;
           for (const auto& profile : profiles) {
               // Create std::vector from cv::Mat data for efficient conversion
-              DArray profile_vec(profile.ptr<float>(), profile.ptr<float>() + profile.total());
+              DArray profile_vec(profile.ptr<double>(), profile.ptr<double>() + profile.total());
               profiles_list.append(py::cast(profile_vec));
           }
           result_list.append(profiles_list);
@@ -125,8 +125,8 @@ PYBIND11_MODULE(hiholo, m) {
 
     // Bind distance calibration function - simplified direct binding
     m.def("calibrateDistance", &ImageUtils::calibrateDistance,
-          "Calibrate distance using maximum PSD values",
-          py::arg("maxPSD"),
+          "Calibrate distance using maximum PSD indexes",
+          py::arg("maxFre"),
           py::arg("nz"),
           py::arg("length"),
           py::arg("pixelSize"),

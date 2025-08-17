@@ -1,22 +1,28 @@
-import numpy as np
-import h5py
-import matplotlib.pyplot as plt
 import hiholo
+from mytools import read_h5_to_double
 
 # Read holograms
-input_file = "calibr_data.h5"
+input_file = "cali_data.h5"
 input_dataset = "holodata"
-with h5py.File(input_file, 'r') as f:
-    holo_data = np.array(f[input_dataset], dtype=np.float32)
+holo_data = read_h5_to_double(input_file, input_dataset)
 direction = 0
 
-# 调用函数
-maxPSDs, frequencies, profiles = hiholo.computePSDs(holo_data, direction)
-for i in range(len(maxPSDs)):
-    print("{:.3e}".format(maxPSDs[i]), end=" ")
-print()
-print(np.array2string(np.array(profiles[0]), formatter={'float_kind':lambda x: "%.3e" % x}))
-print(frequencies[0])
-# maxPSDs: [val1, val2, ...]
-# profiles: [[profile1_data], [profile2_data], ...]
-# frequencies: [[freq1_data], [freq2_data], ...]
+# 0 represents vertical average, 1 represents horizontal average
+# maxFre: [val1, val2, ...]
+# frequencies: [[freq_data1], [freq_data2], ...], x values
+# profiles: [[profile_data1], [profile_data2], ...], y values
+maxFre, frequencies, profiles = hiholo.computePSDs(holo_data, direction)
+print(maxFre)
+
+nz = [20, 10, 40, 60]
+wavelength = 1200
+pixelSize = 15
+stepSize = 0.001098038
+# nz: x values
+# magnitudes: y values (plot points)
+# mag_fits: fitted y values (plot straight line)
+# parameters: [source-to-sample, source-to-detector, slope, intercep, error]
+nz, magnitudes, mag_fits, parameters = hiholo.calibrateDistance(maxFre, nz, wavelength, pixelSize, stepSize)
+print(magnitudes)
+print(mag_fits)
+print(parameters)

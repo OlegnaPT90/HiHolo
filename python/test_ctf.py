@@ -1,7 +1,7 @@
 import numpy as np
 import h5py
 import matplotlib.pyplot as plt
-import fastholo
+import hiholo
 
 def display_phase(phase, title="Phase"):
     """Display phase image"""
@@ -13,7 +13,7 @@ def display_phase(phase, title="Phase"):
     plt.close()
 
 def test_ctf_reconstruction():
-    """Test CTF holographic reconstruction with fastholo"""
+    """Test CTF holographic reconstruction with hiholo"""
     
     # Input/output files
     input_file = "/home/hug/Downloads/HoloTomo_Data/holo_purephase.h5"
@@ -29,7 +29,7 @@ def test_ctf_reconstruction():
     
     # Padding parameters (optional)
     pad_size = [50, 50]    # 填充大小
-    pad_type = fastholo.PaddingType.Replicate  # 填充类型
+    pad_type = hiholo.PaddingType.Replicate  # 填充类型
     pad_value = 0.0          # 填充值
     
     try:
@@ -47,7 +47,7 @@ def test_ctf_reconstruction():
         
         # 执行CTF重建
         print("开始CTF重建...")
-        result = fastholo.reconstruct_ctf(
+        result = hiholo.reconstruct_ctf(
             holograms=holo_data,           # 直接传入numpy数组
             fresnelNumbers=fresnel_numbers,
             lowFreqLim=low_freq_lim,

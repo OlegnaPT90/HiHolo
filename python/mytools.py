@@ -1,7 +1,7 @@
 import h5py
 import numpy as np
 
-def read_h5_to_float(file_path, dataset_name=None):
+def read_h5_to_double(file_path, dataset_name=None):
     with h5py.File(file_path, 'r') as f:
         # If dataset_name is not provided, try to get the first dataset
         if dataset_name is None:
@@ -21,4 +21,4 @@ def read_h5_to_float(file_path, dataset_name=None):
             raise ValueError(f"Data is not 3D. Actual dimensions: {data.shape}")
         
         # Convert data to float type
-        return data.astype(np.float32)
+        return data.astype(np.float64)
