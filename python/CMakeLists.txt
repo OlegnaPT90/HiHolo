@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(hiholo LANGUAGES CXX CUDA)
+project(hiholo LANGUAGES C CXX CUDA)
 
 # 设置 C++ 标准
 set(CMAKE_CXX_STANDARD 17)
@@ -12,6 +12,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui imgcodecs)
 find_package(CUDA REQUIRED)
 find_package(GSL REQUIRED)
+find_package(SimpleITK REQUIRED)
 
 # 查找Python和pybind11
 find_package(Python COMPONENTS Interpreter Development REQUIRED)
@@ -22,6 +23,7 @@ include_directories(
     ${OpenCV_INCLUDE_DIRS}
     ${CUDA_INCLUDE_DIRS}
     ${GSL_INCLUDE_DIRS}
+    ${SimpleITK_INCLUDE_DIRS}
     ${CMAKE_SOURCE_DIR}/../include
 )
 
@@ -62,6 +64,7 @@ set(COMMON_LIBS
     ${CUDA_nppc_LIBRARY}
     ${CUDA_nppidei_LIBRARY}
     ${GSL_LIBRARIES}
+    ${SimpleITK_LIBRARIES}
 )
 
 target_link_libraries(holo_recons_lib ${COMMON_LIBS})

@@ -1,10 +1,10 @@
 import hiholo
-from mytools import read_h5_to_double
+import mytools
 
 # Read holograms
 input_file = "cali_data.h5"
 input_dataset = "holodata"
-holo_data = read_h5_to_double(input_file, input_dataset)
+holo_data = mytools.read_h5_to_float(input_file, input_dataset)
 direction = 0
 
 # 0 represents vertical average, 1 represents horizontal average

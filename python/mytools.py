@@ -22,3 +22,18 @@ def read_h5_to_double(file_path, dataset_name=None):
         
         # Convert data to float type
         return data.astype(np.float64)
+    
+def read_h5_to_float(file_path, dataset_name=None):
+    with h5py.File(file_path, 'r') as f:
+        if dataset_name is None:
+            keys = list(f.keys())
+            if not keys:
+                raise ValueError(f"HDF5 file {file_path} is empty, no datasets available")
+            dataset_name = keys[0]
+        
+        data = f[dataset_name][()]
+        return data.astype(np.float32)
+    
+def save_h5_from_float(file_path, dataset_name, data):
+    with h5py.File(file_path, 'w') as f:
+        f.create_dataset(dataset_name, data=data, dtype=np.float32)
