@@ -131,44 +131,6 @@ PYBIND11_MODULE(hiholo, m) {
           py::arg("length"),
           py::arg("pixelSize"),
           py::arg("stepSize"));
-
-    m.def("registerImages", [](py::array_t<float> images_array) {
-          py::buffer_info buf = images_array.request();
-          int numImages, rows, cols;
-          if (buf.ndim == 3) {
-              numImages = buf.shape[0];
-              rows = buf.shape[1];
-              cols = buf.shape[2];
-          } else {
-              throw std::runtime_error("Images array must be 3D (numImages, rows, cols)");
-          }
-
-          // Allocate new float array and copy data from numpy buffer
-          float *data_copy = new float[numImages * rows * cols];
-          float* src_ptr = static_cast<float*>(buf.ptr);
-          std::copy(src_ptr, src_ptr + numImages * rows * cols, data_copy);
-
-          Int2DArray translations = ImageUtils::registerImages(data_copy, numImages, rows, cols);
-          py::list result_list;
-
-          auto output = py::array_t<float>(numImages * rows * cols);
-          py::buffer_info output_buf = output.request();
-          float* output_ptr = static_cast<float*>(output_buf.ptr);
-
-          std::copy(data_copy, data_copy + numImages * rows * cols, output_ptr);
-          delete[] data_copy;
-          output.resize({numImages, rows, cols});
-          result_list.append(output);
-
-          py::list translations_list;
-          for (const auto& translation: translations) {
-              translations_list.append(py::cast(translation));
-          }
-          result_list.append(translations_list);
-
-          return result_list;
-    }, "Register images using cross-correlation, returns [registered_images, translations]",
-          py::arg("images"));
     
     // Bind CTF reconstruction function with numpy array auto-parsing
     m.def("reconstruct_ctf", [](py::array_t<float> holograms_array, const F2DArray& fresnelNumbers,

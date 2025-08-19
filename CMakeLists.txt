@@ -14,7 +14,6 @@ find_package(CUDA REQUIRED)
 find_package(MPI REQUIRED)
 find_package(GSL REQUIRED)
 find_package(HDF5 REQUIRED)
-#find_package(SimpleITK REQUIRED)
 
 # 包含目录
 include_directories(
@@ -74,7 +73,6 @@ set(COMMON_LIBS
     ${CUDA_nppidei_LIBRARY}
     ${CUDA_nppc_LIBRARY}
     ${HDF5_LIBRARIES}
-    #${SimpleITK_LIBRARIES}
     ${GSL_LIBRARIES}
     ${MPI_CXX_LIBRARIES}
 )

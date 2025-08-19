@@ -38,25 +38,24 @@ def test_reconstruction():
     # Parameters (modify this section)
     #############################################################
     
-    # Input/output files
     #input_file = "/home/hug/Downloads/HoloTomo_Data/visiblelight/wing_holo.h5"
-    input_file = "/home/hug/Downloads/HoloTomo_Data/holo_data.h5"
+    input_file = "/home/hug/Downloads/HoloTomo_Data/holo_regist_new.h5"
     input_dataset = "holodata"
     #output_file = "/home/hug/Downloads/HoloTomo_Data/visiblelight/wing_result.h5"
     output_file = "/home/hug/Downloads/HoloTomo_Data/result.h5"
     output_dataset = "phasedata"
     
     # List of fresnel numbers
-    #fresnel_numbers = [[0.0016667], [0.00083333], [0.000483333], [0.000266667]]
+    fresnel_numbers = [[0.0016667], [0.00083333], [0.000483333], [0.000266667]]
     # fresnel_numbers = [[2.906977e-4], [1.453488e-4], [8.4302325e-5], [4.651163e-5]]
-    fresnel_numbers = [[0.003], [0.0015], [0.00087], [0.00039], [0.000216]]
+    # fresnel_numbers = [[0.003], [0.0015], [0.00087], [0.00039], [0.000216]]
     #fresnel_numbers = [[2.987065e-4]] # wing of dragonfly
     # 确保fresnel_numbers的格式正确
     print(f"Using {len(fresnel_numbers)} fresnel numbers: {fresnel_numbers}")
     
     # Reconstruction parameters
-    iterations = 300            # Number of iterations
-    plot_interval = 300          # Interval for displaying results
+    iterations = 200            # Number of iterations
+    plot_interval = 200          # Interval for displaying results
     
     # Initial guess (optional)
     #initial_phase_file = "/home/hug/Downloads/HoloTomo_Data/purephase_ctf_result.h5"
@@ -66,7 +65,7 @@ def test_reconstruction():
     initial_phase_dataset = None
     
     # Algorithm selection (0:AP, 1:RAAR, 2:HIO, 3:DRAP, 4:APWP, 5:EPI)
-    algorithm = hiholo.Algorithm.APWP
+    algorithm = hiholo.Algorithm.AP
     
     # Algorithm parameters
     if algorithm == hiholo.Algorithm.RAAR:
@@ -75,7 +74,7 @@ def test_reconstruction():
         algo_params = [0.7]
     
     # Constraints
-    amp_limits = [1, 1]  # [min, max] amplitude
+    amp_limits = [0, float('inf')]  # [min, max] amplitude
     phase_limits = [-float('inf'), float('inf')]  # [min, max] phase
     support = []  # Support constraint region size
     outside_value = 0.0  # Value outside support region

@@ -58,32 +58,6 @@ FArray ImageUtils::convertMatToVec(const cv::Mat &mat)
     return data;
 }
 
-void ImageUtils::convertVecToImgs(float *data, std::vector<itk::simple::Image> &images, int rows, int cols)
-{
-    std::vector<unsigned int> size = {static_cast<unsigned int>(cols), static_cast<unsigned int>(rows)};
-    for (int i = 0; i < images.size(); i++) {
-        // 使用ImportImageFilter创建图像
-        images[i] = itk::simple::ImportAsFloat(data + i * rows * cols, size, std::vector<double>(2, 1.0));
-    }
-}
-
-void ImageUtils::convertMatsToImgs(const std::vector<cv::Mat> &mats, std::vector<itk::simple::Image> &images, int rows, int cols)
-{
-    std::vector<unsigned int> size = {static_cast<unsigned int>(cols), static_cast<unsigned int>(rows)};
-
-    for (int i = 0; i < mats.size(); i++) {
-        images[i] = itk::simple::ImportAsFloat(reinterpret_cast<float*>(mats[i].data), size, std::vector<double>(2, 1.0));
-    }
-}
-
-void ImageUtils::convertImgsToVec(const std::vector<itk::simple::Image> &images, float *data, int rows, int cols)
-{
-    for (int i = 0; i < images.size(); i++) {
-        auto buffer = images[i].GetBufferAsFloat();
-        std::memcpy(data + i * rows * cols, buffer, rows * cols * sizeof(float));
-    }
-}
-
 void ImageUtils::removeOutliers(cv::Mat &originalImg, int kernelSize, float threshold)
 {   
     // Set the zero value to max
@@ -169,71 +143,6 @@ void ImageUtils::removeStripes(cv::Mat &image, int rangeRows, int rangeCols, int
         throw std::invalid_argument("Invalid removal method!");
     }
 
-}
-
-IntArray ImageUtils::registerImage(const itk::simple::Image &fixedImage, itk::simple::Image &movingImage)
-{
-    try {
-        // Create registration method for image alignment
-        itk::simple::ImageRegistrationMethod registration;
-        
-        // Configure registration parameters:
-        // - Use correlation metric for similarity measure
-        // - Gradient descent optimizer with specified parameters
-        registration.SetMetricAsCorrelation();
-        registration.SetOptimizerAsGradientDescent(1, 100, 1e-3, 15, registration.EachIteration);
-        registration.SetOptimizerScalesFromPhysicalShift();
-        
-        // Set initial translation transform and linear interpolation
-        registration.SetInitialTransform(itk::simple::TranslationTransform(fixedImage.GetDimension()));
-        registration.SetInterpolator(itk::simple::sitkLinear);
-
-        // Execute registration and adjust transform parameters
-        itk::simple::Transform transform = registration.Execute(fixedImage, movingImage);
-        DArray parameters = transform.GetParameters();
-        if (std::abs(parameters[0]) > 1) {
-            parameters[0] += parameters[0] > 0 ? 1 : -1;
-        }
-        if (std::abs(parameters[1]) > 1) {
-            parameters[1] += parameters[1] > 0 ? 1 : -1;
-        }
-
-        // Pad image boundaries to accommodate translation
-        std::vector<unsigned int> padBound = {static_cast<unsigned int>(std::round(std::abs(parameters[0]))),
-                                              static_cast<unsigned int>(std::round(std::abs(parameters[1])))};
-        movingImage = itk::simple::ZeroFluxNeumannPad(movingImage, padBound, padBound);
-
-        // Apply transform and extract registered region
-        transform.SetParameters(parameters);
-        movingImage = itk::simple::Resample(movingImage, transform, itk::simple::sitkNearestNeighbor,
-                                            0.0, movingImage.GetPixelID());
-        // Calculate correct extraction index based on translation direction
-        IntArray index = {
-            parameters[0] > 0 ? 0 : static_cast<int>(padBound[0]),
-            parameters[1] > 0 ? 0 : static_cast<int>(padBound[1])
-        };
-        movingImage = itk::simple::Extract(movingImage, fixedImage.GetSize(), index);
-
-        return {static_cast<int>(std::round(parameters[0])), static_cast<int>(std::round(parameters[1]))};
-    } catch (const std::exception &e) {
-        std::cerr << "Error registering image: " << e.what() << std::endl;
-        return IntArray();
-    }
-}
-
-Int2DArray ImageUtils::registerImages(float *data, int numImages, int rows, int cols)
-{
-    std::vector<itk::simple::Image> holoImages(numImages);
-    convertVecToImgs(data, holoImages, rows, cols);
-    Int2DArray translations(numImages);
-    translations[0] = {0, 0};
-
-    for (int i = 1; i < numImages; i++) { 
-        translations[i] = ImageUtils::registerImage(holoImages[0], holoImages[i]);
-    }
-
-    ImageUtils::convertImgsToVec(holoImages, data, rows, cols);
-    return translations;
 }
 
 DArray ImageUtils::computePSDs(const std::vector<cv::Mat> &images, int direction, std::vector<cv::Mat> &profiles, std::vector<cv::Mat> &frequencies)
