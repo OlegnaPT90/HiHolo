@@ -100,22 +100,47 @@ cv::Mat ImageUtils::genCorrMatrix(const cv::Mat &image, int range, int windowSiz
 {
     cv::Mat topImage, bottomImage, topCols, bottomCols;
     
-    // Calculate the average intensity of the top rols
+    // Calculate the average intensity of the top rows
     topImage = image.rowRange(0, range);
     cv::reduce(topImage, topCols, 0, cv::REDUCE_AVG);
     cv::blur(topCols, topCols, cv::Size(windowSize, 1), cv::Point(-1 ,-1), cv::BORDER_REPLICATE);
 
-    // Calculate the average intensity of the bottom rols
+    // Calculate the average intensity of the bottom rows
     bottomImage = image.rowRange(image.rows - range, image.rows);
     cv::reduce(bottomImage, bottomCols, 0, cv::REDUCE_AVG);
     cv::blur(bottomCols, bottomCols, cv::Size(windowSize, 1), cv::Point(-1 ,-1), cv::BORDER_REPLICATE);
+
+    // Ensure the columns have finite values
+    cv::Mat topColsMask, bottomColsMask;
+    cv::compare(topCols, topCols, topColsMask, cv::CMP_EQ);  // Check for NaN
+    cv::compare(bottomCols, bottomCols, bottomColsMask, cv::CMP_EQ);  // Check for NaN
+    
+    // Replace invalid values with image mean
+    cv::Scalar imgMean = cv::mean(image);
+    topCols.setTo(imgMean[0], ~topColsMask);
+    bottomCols.setTo(imgMean[0], ~bottomColsMask);
 
     // Generate linear interpolation factor
     FArray linearRange = MathUtils::genEquidisRange(0, 1, image.rows);
     cv::Mat interFactor(image.rows, 1, CV_32F, linearRange.data());
     
-    // Combine top and bottom intensity to remove stripes
-    return (1 - interFactor) * topCols + interFactor * bottomCols;
+    // Create correction matrix by proper interpolation
+    cv::Mat corrMatrix(image.rows, image.cols, CV_32F);
+    
+    // Expand topCols and bottomCols to full image size
+    cv::Mat topColsExpanded, bottomColsExpanded;
+    cv::repeat(topCols, image.rows, 1, topColsExpanded);
+    cv::repeat(bottomCols, image.rows, 1, bottomColsExpanded);
+    
+    // Expand interpolation factor to match image width
+    cv::Mat interFactorExpanded;
+    cv::repeat(interFactor, 1, image.cols, interFactorExpanded);
+    
+    // Linear interpolation between top and bottom
+    corrMatrix = (1.0 - interFactorExpanded).mul(topColsExpanded) + 
+                 interFactorExpanded.mul(bottomColsExpanded);
+    
+    return corrMatrix;
 }
 
 
@@ -129,20 +154,62 @@ void ImageUtils::removeStripes(cv::Mat &image, int rangeRows, int rangeCols, int
         rangeCols = std::ceil(image.cols * 0.04);
     }
     
-    // Create correction matrix for horizontal and vertical
-    cv::Mat corrMatrix_y = genCorrMatrix(image, rangeRows, windowSize);
-    cv::Mat corrMatrix_x = genCorrMatrix(image.t(), rangeCols, windowSize);
-    auto corrMatrix = corrMatrix_y + corrMatrix_x.t();
-
-    // Remove stripes by dividing or subtracting
-    if (method == "mul") {
-        image /= corrMatrix - cv::mean(corrMatrix)[0] + 1;
-    } else if (method == "add") {
-        image -= corrMatrix - cv::mean(corrMatrix)[0];
-    } else {
-        throw std::invalid_argument("Invalid removal method!");
+    // Ensure ranges are valid
+    rangeRows = std::max(1, std::min(rangeRows, image.rows / 4));
+    rangeCols = std::max(1, std::min(rangeCols, image.cols / 4));
+    
+    // Ensure window size is odd and positive
+    if (windowSize <= 0 || windowSize % 2 == 0) {
+        windowSize = 5;  // Default to 5
     }
+    
+    try {
+        // Create correction matrix for horizontal and vertical stripes
+        cv::Mat corrMatrix_y = genCorrMatrix(image, rangeRows, windowSize);
+        cv::Mat corrMatrix_x = genCorrMatrix(image.t(), rangeCols, windowSize);
+        cv::Mat corrMatrix = corrMatrix_y + corrMatrix_x.t();
 
+        // Normalize the correction matrix to avoid extreme values
+        cv::Scalar meanCorr = cv::mean(corrMatrix);
+        double meanVal = meanCorr[0];
+        
+        // Check for invalid mean value
+        if (!std::isfinite(meanVal) || meanVal <= 0) {
+            std::cerr << "Warning: Invalid correction matrix mean, skipping stripe removal" << std::endl;
+            return;
+        }
+        
+        // Remove stripes by dividing or subtracting
+        if (method == "mul") {
+            // For multiplicative correction, normalize to mean=1
+            cv::Mat normalizedCorr = corrMatrix / meanVal;
+            
+            // Add small epsilon to avoid division by zero or very small numbers
+            const double epsilon = 1e-6;
+            cv::Mat denominator;
+            cv::max(normalizedCorr, epsilon, denominator);
+            
+            image = image / denominator;
+        } else if (method == "add") {
+            // For additive correction, subtract the offset pattern
+            cv::Mat offsetPattern = corrMatrix - meanVal;
+            image = image - offsetPattern;
+        } else {
+            throw std::invalid_argument("Invalid removal method! Use 'mul' or 'add'.");
+        }
+        
+        // Check for invalid values in result and clamp if necessary
+        cv::Mat mask;
+        cv::compare(image, image, mask, cv::CMP_EQ);  // Check for NaN
+        if (cv::countNonZero(~mask) > 0) {
+            std::cerr << "Warning: NaN values detected after stripe removal, clamping to zero" << std::endl;
+            image.setTo(0, ~mask);
+        }
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Error in stripe removal: " << e.what() << std::endl;
+        throw;
+    }
 }
 
 DArray ImageUtils::computePSDs(const std::vector<cv::Mat> &images, int direction, std::vector<cv::Mat> &profiles, std::vector<cv::Mat> &frequencies)

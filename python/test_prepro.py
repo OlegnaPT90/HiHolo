@@ -1,26 +1,26 @@
 import numpy as np
 import h5py
-import hiholo
+import matplotlib.pyplot as plt
+import mytools
 
 # Input/output files
 input_file = "/home/hug/Downloads/HoloTomo_Data/holo_purephase.h5"
-output_file1 = "/home/hug/Downloads/HoloTomo_Data/visiblelight/board_holo.h5"
-output_file2 = "/home/hug/Downloads/HoloTomo_Data/visiblelight/board_back_holo.h5"
+output_file = "/home/hug/Downloads/HoloTomo_Data/holo_purephase_processed.h5"
 dataset_name = "holodata"
 
 # Read holograms
-with h5py.File(input_file1, 'r') as f:
-    holo_data = np.array(f[dataset_name], dtype=np.float32)
-    holo_data = hiholo.removeOutliers(holo_data)
+holo_data = mytools.read_h5_to_float(input_file, dataset_name)
 
-with h5py.File(input_file2, 'r') as f:
-    back_data = np.array(f[dataset_name], dtype=np.float32)
-    back_data = hiholo.removeOutliers(back_data)
+mytools.remove_outliers(holo_data)
+mytools.remove_stripes(holo_data)
+print(holo_data[0])
 
-holo_data = holo_data / back_data
-holo_data = holo_data[0:2704, 0:2704]
-# back_data = back_data[0:2048, 400:2448]
+display_data = mytools.scale_display_data(holo_data[0])
+plt.figure(figsize=(8, 8))
+plt.imshow(display_data, cmap='viridis')
+plt.colorbar()
+plt.title("holo_data first frame")
+plt.show()
 
 # Save processed holograms
-with h5py.File(output_file1, 'w') as f:
-    f.create_dataset(dataset_name, data=holo_data, dtype=np.float32)
+mytools.save_h5_from_float(output_file, dataset_name, holo_data)

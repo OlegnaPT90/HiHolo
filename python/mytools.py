@@ -1,6 +1,7 @@
 import h5py
 import numpy as np
 import SimpleITK as sitk
+import hiholo
 
 def read_h5_to_double(file_path, dataset_name=None):
     with h5py.File(file_path, 'r') as f:
@@ -105,11 +106,21 @@ def read_phasedata_frame(file_path, dataset, angle):
         data = f[dataset][()]
         return data[angle]
 
-def remove_outliers(data):
-    pass
+def remove_outliers(data, kernelSize=5, threshold=2.0):
+    # Ensure data is 3D
+    if len(data.shape) != 3:
+        raise ValueError(f"Data is not 3D. Actual dimensions: {data.shape}")
 
-def remove_stripes(data):
-    pass
+    for i in range(data.shape[0]):
+        data[i] = hiholo.removeOutliers(data[i], kernelSize, threshold)
+
+def remove_stripes(data, rangeRows=0, rangeCols=0, windowSize=5, method="mul"):
+    # Ensure data is 3D
+    if len(data.shape) != 3:
+        raise ValueError(f"Data is not 3D. Actual dimensions: {data.shape}")
+
+    for i in range(data.shape[0]):
+        data[i] = hiholo.removeStripes(data[i], rangeRows, rangeCols, windowSize, method)
 
 def numpy_to_sitk_image(array):
     """Convert numpy array to SimpleITK image"""
