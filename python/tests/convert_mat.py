@@ -2,24 +2,35 @@ import numpy as np
 import h5py
 
 # 输入输出文件
-input_file1 = "/home/hug/Downloads/HoloTomo_Data/purephase_result.h5"
-input_file2 = "/home/hug/Downloads/HoloTomo_Data/holo_200angles_phase.h5"
-dataset = "phasedata"
-angles = 200  # 期望的角度数
+input_file = "/home/hug/Downloads/HoloTomo_Data/holo_200angles_simu_format.h5"
+phase_file = "/home/hug/Downloads/HoloTomo_Data/result.h5"
+output_file = "/home/hug/Downloads/HoloTomo_Data/holo_200angles_phase.h5"
+back_dataset = "backgrounds"
+dark_dataset = "darks"
+phase_dataset = "phasedata"
+angles = 200
+distance = 4
 
-# 读取2D数据
-with h5py.File(input_file1, 'r') as f:
-    phase_data = np.array(f[dataset], dtype=np.float32)  # 假设shape为(H, W)
+# back_data = np.ones((distance, 500, 500)).astype(np.float32)
+# dark_data = np.random.rand(1, 500, 500).astype(np.float32) * 1.0/50
+# print(dark_data[0])
 
-# 检查原始数据shape
-if phase_data.ndim != 2:
-    raise ValueError(f"原始数据不是2D，实际shape为{phase_data.shape}")
+# with h5py.File(input_file, 'a') as f:
+#     if back_dataset in f:
+#         del f[back_dataset]
+#     f.create_dataset(back_dataset, data=back_data)
+#     if dark_dataset in f:
+#         del f[dark_dataset]
+#     f.create_dataset(dark_dataset, data=dark_data)
 
-# 将2D数据堆叠成3D，shape[0]=angles
-phasedata_3d = np.stack([phase_data.copy() for _ in range(angles)], axis=0)  # shape=(angles, H, W)
+phase_data = None
+with h5py.File(phase_file, 'r') as f:
+    phase_data = np.array(f[phase_dataset], dtype=np.float32)
 
-# 写入新的h5文件
-with h5py.File(input_file2, 'w') as f:
-    f.create_dataset(dataset, data=phasedata_3d)
+# 将2D相位数据扩展为3D，形状为(angles, H, W)
+phase_data_3d = np.repeat(phase_data[np.newaxis, :, :], angles, axis=0)
+print(f"扩展后的phase_data_3d形状: {phase_data_3d.shape}")
 
-print(f"已在{input_file2}中写入数据集：{dataset}，形状为{phasedata_3d.shape}")
+with h5py.File(output_file, 'w') as f:
+    f.create_dataset(phase_dataset, data=phase_data_3d, dtype=np.float32)
+print(f"已在{output_file}中写入数据集：{phase_dataset}，形状为{phase_data_3d.shape}")
