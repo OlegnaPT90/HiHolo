@@ -138,16 +138,31 @@ def remove_outliers(data, kernelSize=5, threshold=2.0):
     if len(data.shape) != 3:
         raise ValueError(f"Data is not 3D. Actual dimensions: {data.shape}")
 
+    processed_data = np.zeros_like(data)
     for i in range(data.shape[0]):
-        data[i] = hiholo.removeOutliers(data[i], kernelSize, threshold)
+        processed_data[i] = hiholo.removeOutliers(data[i], kernelSize, threshold)
+    return processed_data
 
 def remove_stripes(data, rangeRows=0, rangeCols=0, windowSize=5, method="mul"):
     # Ensure data is 3D
     if len(data.shape) != 3:
         raise ValueError(f"Data is not 3D. Actual dimensions: {data.shape}")
 
+    processed_data = np.zeros_like(data)
     for i in range(data.shape[0]):
-        data[i] = hiholo.removeStripes(data[i], rangeRows, rangeCols, windowSize, method)
+        processed_data[i] = hiholo.removeStripes(data[i], rangeRows, rangeCols, windowSize, method)
+    return processed_data
+
+def dark_flat_correction(data, dark, flat, isAPWP=False):
+    dark = np.repeat(dark, data.shape[0], axis=0)
+    if isAPWP:
+        holo = data - dark
+        probe = flat - dark
+    else:
+        holo = (data - dark) / (flat - dark)
+        probe = np.array([])
+    
+    return holo, probe
 
 def numpy_to_sitk_image(array):
     """Convert numpy array to SimpleITK image"""

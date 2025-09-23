@@ -1,6 +1,10 @@
 import numpy as np
 import h5py
+import sys
+import os
 import matplotlib.pyplot as plt
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import hiholo
 
 def display_phase(phase, title="Phase"):
@@ -15,7 +19,7 @@ def display_phase(phase, title="Phase"):
 def test_ctf_reconstruction():
     """Test CTF holographic reconstruction with hiholo"""
     
-    # Input/output files
+    # Input/output filess
     input_file = "/home/hug/Downloads/HoloTomo_Data/holo_purephase.h5"
     input_dataset = "holodata"
     output_file = "/home/hug/Downloads/HoloTomo_Data/purephase_ctf_result.h5"
@@ -84,5 +88,4 @@ def test_ctf_reconstruction():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    # 测试单张图像CTF重建
     test_ctf_reconstruction() 

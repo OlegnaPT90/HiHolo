@@ -40,6 +40,9 @@ PYBIND11_MODULE(hiholo, m) {
         .value("APWP", ProjectionSolver::Algorithm::APWP)
         .value("EPI", ProjectionSolver::Algorithm::EPI);
 
+    // Add CTF as an algorithm for user convenience (100 is an arbitrary unique value)
+    m.attr("Algorithm").attr("CTF") = py::int_(100);
+
     py::enum_<PMagnitudeCons::Type>(m, "ProjectionType")
         .value("Averaged", PMagnitudeCons::Type::Averaged)
         .value("Sequential", PMagnitudeCons::Type::Sequential)
@@ -189,14 +192,13 @@ PYBIND11_MODULE(hiholo, m) {
           py::arg("padValue") = 0.0f);
     
     // Bind iterative reconstruction function with numpy array auto-parsing
-    m.def("reconstruct_iter", [](py::array_t<float> holograms_array, const F2DArray& fresnelNumbers,
-                                int iterations, py::array_t<float> initialPhase_array, 
-                                ProjectionSolver::Algorithm algorithm, const FArray& algoParameters,
-                                float minPhase, float maxPhase, float minAmplitude, float maxAmplitude,
-                                const IntArray& support, float outsideValue, const IntArray& padSize,
-                                CUDAUtils::PaddingType padType, float padValue, PMagnitudeCons::Type projectionType,
-                                CUDAPropKernel::Type kernelType, py::array_t<float> holoProbes_array,
-                                py::array_t<float> initProbePhase_array, bool calcError) {
+    m.def("reconstruct_iter", [](py::array_t<float> holograms_array, const F2DArray& fresnelNumbers, int iterations,
+                                 py::array_t<float> initialPhase_array, py::array_t<float> initialAmplitude_array,
+                                 ProjectionSolver::Algorithm algorithm, const FArray& algoParameters, float minPhase,
+                                 float maxPhase, float minAmplitude, float maxAmplitude, const IntArray& support,
+                                 float outsideValue, const IntArray& padSize, CUDAUtils::PaddingType padType,
+                                 float padValue, PMagnitudeCons::Type projectionType, CUDAPropKernel::Type kernelType,
+                                 py::array_t<float> holoProbes_array, py::array_t<float> initProbePhase_array, bool calcError) {
           
           py::buffer_info holo_buf = holograms_array.request();
           
@@ -230,6 +232,14 @@ PYBIND11_MODULE(hiholo, m) {
               float* phase_data_ptr = static_cast<float*>(phase_buf.ptr);
               initialPhase.assign(phase_data_ptr, phase_data_ptr + phase_buf.size);
           }
+
+          // Convert initialAmplitude array if provided
+          FArray initialAmplitude;
+          if (initialAmplitude_array.size() > 0) {
+              py::buffer_info amp_buf = initialAmplitude_array.request();
+              float* amp_data_ptr = static_cast<float*>(amp_buf.ptr);
+              initialAmplitude.assign(amp_data_ptr, amp_data_ptr + amp_buf.size);
+          }
           
           // Convert holoProbes array if provided  
           FArray holoProbes;
@@ -249,10 +259,10 @@ PYBIND11_MODULE(hiholo, m) {
           
           // Call the original C++ function
           F2DArray result = PhaseRetrieval::reconstruct_iter(holograms, numImages, imSize, fresnelNumbers, iterations,
-                                                             initialPhase, algorithm, algoParameters, minPhase, maxPhase,
-                                                             minAmplitude, maxAmplitude, support, outsideValue, padSize,
-                                                             padType, padValue, projectionType, kernelType, holoProbes,
-                                                             initProbePhase, calcError);
+                                                             initialPhase, initialAmplitude, algorithm, algoParameters,
+                                                             minPhase, maxPhase, minAmplitude, maxAmplitude, support,
+                                                             outsideValue, padSize, padType, padValue, projectionType,
+                                                             kernelType, holoProbes, initProbePhase, calcError);
           
           // Convert F2DArray result to list of numpy arrays with proper dimensions
           py::list output_list;
@@ -289,6 +299,7 @@ PYBIND11_MODULE(hiholo, m) {
           py::arg("fresnelNumbers"),
           py::arg("iterations") = 200,
           py::arg("initialPhase") = py::array_t<float>(),
+          py::arg("initialAmplitude") = py::array_t<float>(),
           py::arg("algorithm") = ProjectionSolver::Algorithm::AP,
           py::arg("algoParameters") = FArray(),
           py::arg("minPhase") = -1e10f,

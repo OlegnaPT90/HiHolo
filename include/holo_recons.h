@@ -6,9 +6,9 @@
 namespace PhaseRetrieval
 {   
     F2DArray reconstruct_iter(const FArray &holograms, int numImages, const IntArray &imSize, const F2DArray &fresnelNumbers, int iterations, const FArray &initialPhase,
-                              ProjectionSolver::Algorithm algorithm, const FArray &algoParameters, float minPhase, float maxPhase, float minAmplitude, float maxAmplitude,
-                              const IntArray &support, float outsideValue, const IntArray &padSize, CUDAUtils::PaddingType padType, float padValue, PMagnitudeCons::Type projectionType,
-                              CUDAPropKernel::Type kernelType, const FArray &holoProbes, const FArray &initProbePhase, bool calcError);
+                              const FArray &initialAmplitude, ProjectionSolver::Algorithm algorithm, const FArray &algoParameters, float minPhase, float maxPhase, float minAmplitude,
+                              float maxAmplitude, const IntArray &support, float outsideValue, const IntArray &padSize, CUDAUtils::PaddingType padType, float padValue,
+                              PMagnitudeCons::Type projectionType, CUDAPropKernel::Type kernelType, const FArray &holoProbes, const FArray &initProbePhase, bool calcError);
 
     F2DArray reconstruct_epi(const FArray &holograms, int numImages, const IntArray &measSize, const F2DArray &fresnelNumbers, int iterations, const IntArray &imSize,
                                 const FArray &initialPhase, const FArray &initialAmplitude, float minPhase, float maxPhase, float minAmplitude, float maxAmplitude,

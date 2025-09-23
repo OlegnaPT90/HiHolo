@@ -29,8 +29,6 @@ namespace PhaseRetrieval
         if (lowFreqLim < (2.0f * numImages * std::pow(betaDeltaRatio, 2.0f))) {
             lowFreqLim = 0.0f;
         }
-
-        std::cout << "Choosing Algorithm: CTF" << std::endl;
         
         // transfer holograms to GPU
         float *holograms_gpu, *phase_gpu;
@@ -190,9 +188,9 @@ namespace PhaseRetrieval
     }
 
     F2DArray reconstruct_iter(const FArray &holograms, int numImages, const IntArray &imSize, const F2DArray &fresnelNumbers, int iterations, const FArray &initialPhase,
-                              ProjectionSolver::Algorithm algorithm, const FArray &algoParameters, float minPhase, float maxPhase, float minAmplitude, float maxAmplitude,
-                              const IntArray &support, float outsideValue, const IntArray &padSize, CUDAUtils::PaddingType padType, float padValue, PMagnitudeCons::Type projectionType,
-                              CUDAPropKernel::Type kernelType, const FArray &holoProbes, const FArray &initProbePhase, bool calcError)
+                              const FArray &initialAmplitude, ProjectionSolver::Algorithm algorithm, const FArray &algoParameters, float minPhase, float maxPhase, float minAmplitude,
+                              float maxAmplitude, const IntArray &support, float outsideValue, const IntArray &padSize, CUDAUtils::PaddingType padType, float padValue,
+                              PMagnitudeCons::Type projectionType, CUDAPropKernel::Type kernelType, const FArray &holoProbes, const FArray &initProbePhase, bool calcError)
     {
         // Add GPU environment check
         int deviceCount;
@@ -318,7 +316,7 @@ namespace PhaseRetrieval
             PS = new MultiObjectCons(pPhase, pAmplitude, pSupport);
         }
 
-        // Initialize wave field from the guess phase
+        // Initialize wave field from the guess phase and amplitude
         cuFloatComplex *complexWave, *probe;
         cudaMalloc((void**)&complexWave, newSize[0] * newSize[1] * sizeof(cuFloatComplex));
         gridSize = (newSize[0] * newSize[1] + blockSize - 1) / blockSize;
@@ -341,7 +339,27 @@ namespace PhaseRetrieval
                 cudaFree(initPhase_gpu);
             }
 
-            initByPhase<<<gridSize, blockSize>>>(complexWave, paddedInitPhase_gpu, newSize[0] * newSize[1]);
+            if (!initialAmplitude.empty()) {
+                if (initialAmplitude.size() != imSize[0] * imSize[1]) {
+                    throw std::invalid_argument("The sizes of guess amplitude and wave field do not match!");
+                }
+
+                float *initAmp_gpu;
+                cudaMalloc((void**)&initAmp_gpu, initialAmplitude.size() * sizeof(float));
+                cudaMemcpy(initAmp_gpu, initialAmplitude.data(), initialAmplitude.size() * sizeof(float), cudaMemcpyHostToDevice);
+
+                // Pad initial amplitude if needed
+                float *paddedInitAmp_gpu = CUDAUtils::padInputData(initAmp_gpu, imSize, padSize, padType, padValue);
+                if (paddedInitAmp_gpu != initAmp_gpu) {
+                    cudaFree(initAmp_gpu);
+                }
+
+                computeComplexData<<<gridSize, blockSize>>>(complexWave, paddedInitAmp_gpu, paddedInitPhase_gpu, newSize[0] * newSize[1]);
+                cudaFree(paddedInitAmp_gpu);
+            } else {
+                initByPhase<<<gridSize, blockSize>>>(complexWave, paddedInitPhase_gpu, newSize[0] * newSize[1]);
+            }
+
             cudaFree(paddedInitPhase_gpu);
         } else {
             // Initialize wave field from the zero phase

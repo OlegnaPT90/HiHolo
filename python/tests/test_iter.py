@@ -19,7 +19,11 @@ result = [phase_2d, amplitude_2d, step_errors_1d, pm_errors_1d]
 
 import numpy as np
 import h5py
+import sys
+import os
 import matplotlib.pyplot as plt
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import hiholo
 
 def display_image(phase, title="Phase"):
@@ -40,23 +44,23 @@ def test_reconstruction():
     
     #input_file = "/home/hug/Downloads/HoloTomo_Data/visiblelight/board_holo.h5"
     #input_file = "/home/hug/Downloads/HoloTomo_Data/holo_regist_new.h5"
-    input_file = "/home/hug/Downloads/HoloTomo_Data/holo_purephase.h5"
+    #input_file = "/home/hug/Downloads/HoloTomo_Data/holo_purephase.h5"
+    input_file = "/home/hug/Downloads/HoloTomo_Data/holopadw1.h5"
     input_dataset = "holodata"
     # output_file = "/home/hug/Downloads/HoloTomo_Data/visiblelight/board_result.h5"
     output_file = "/home/hug/Downloads/HoloTomo_Data/result.h5"
     output_dataset = "phasedata"
     
     # List of fresnel numbers
-    fresnel_numbers = [[0.0016667], [0.00083333], [0.000483333], [0.000266667]]
-    # fresnel_numbers = [[2.906977e-4], [1.453488e-4], [8.4302325e-5], [4.651163e-5]]
+    # fresnel_numbers = [[0.0016667], [0.00083333], [0.000483333], [0.000266667]]
+    fresnel_numbers = [[2.906977e-4], [1.453488e-4], [8.4302325e-5], [4.651163e-5]]
     # fresnel_numbers = [[0.003], [0.0015], [0.00087], [0.00039], [0.000216]]
     # fresnel_numbers = [[5.578503254e-4]] # wing of dragonfly
-    # 确保fresnel_numbers的格式正确
     print(f"Using {len(fresnel_numbers)} fresnel numbers: {fresnel_numbers}")
     
     # Reconstruction parameters
     iterations = 200            # Number of iterations
-    plot_interval = 200          # Interval for displaying results
+    plot_interval = 50          # Interval for displaying results
     
     # Initial guess (optional)
     #initial_phase_file = "/home/hug/Downloads/HoloTomo_Data/purephase_ctf_result.h5"
@@ -66,7 +70,7 @@ def test_reconstruction():
     initial_phase_dataset = None
     
     # Algorithm selection (0:AP, 1:RAAR, 2:HIO, 3:DRAP, 4:APWP, 5:EPI)
-    algorithm = hiholo.Algorithm.AP
+    algorithm = hiholo.Algorithm.EPI
     
     # Algorithm parameters
     if algorithm == hiholo.Algorithm.RAAR:
@@ -77,8 +81,8 @@ def test_reconstruction():
     # Constraints
     amp_limits = [0, float('inf')]  # [min, max] amplitude
     phase_limits = [-float('inf'), float('inf')]  # [min, max] phase
-    support = []  # Support constraint region size
-    outside_value = 0.0  # Value outside support region
+    support = [1048, 1048]  # Support constraint region size
+    outside_value = 1.0  # Value outside support region
     
     # Padding
     pad_size = [250, 250]  # Padding size
@@ -96,7 +100,7 @@ def test_reconstruction():
     kernel_type = hiholo.PropKernelType.Fourier
     
     # Error calculation
-    calc_error = False
+    calc_error = True
     
     #############################################################
     # End of parameters section
@@ -171,14 +175,15 @@ def test_reconstruction():
                 residuals[0].extend(result[2].tolist())
                 residuals[1].extend(result[3].tolist())
             
-            display_image(result[1], f"Amplitude reconstructed by {(i+1)*plot_interval} iterations")
+            display_image(result[0], f"Amplitude reconstructed by {(i+1)*plot_interval} iterations")
         else:            
             # New iterative reconstruction API
             result = hiholo.reconstruct_iter( 
                 holograms=holo_data,                    
                 fresnelNumbers=fresnel_numbers,
                 iterations=plot_interval,
-                initialPhase=initial_phase_array,      
+                initialPhase=initial_phase_array,
+                initialAmplitude=initial_amplitude_array,
                 algorithm=algorithm,
                 algoParameters=algo_params,
                 minPhase=phase_limits[0],
@@ -199,7 +204,8 @@ def test_reconstruction():
             
             # result现在是2D numpy数组的列表：[phase, amplitude, ...]
             initial_phase_array = result[0]
-            
+            initial_amplitude_array = result[1]
+
             if algorithm == hiholo.Algorithm.APWP:
                 probe_phase_array = result[2]
             
