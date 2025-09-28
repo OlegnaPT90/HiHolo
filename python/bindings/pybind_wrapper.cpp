@@ -421,24 +421,50 @@ PYBIND11_MODULE(hiholo, m) {
           py::arg("kernelType") = CUDAPropKernel::Type::Fourier,
           py::arg("calcError") = false);
 
-    // Bind CTFReconstructor class
+    // Bind CTFReconstructor class with numpy array auto-parsing
     py::class_<PhaseRetrieval::CTFReconstructor>(m, "CTFReconstructor")
         .def(py::init<int, int, const IntArray&, const F2DArray&, float, float,
                       float, const IntArray&, CUDAUtils::PaddingType, float>(),
              "Initialize CTF reconstructor",
-             py::arg("batchsize"), 
-             py::arg("images"), 
-             py::arg("imsize"), 
-             py::arg("fresnelnumbers"), 
+             py::arg("batchSize"),
+             py::arg("images"),
+             py::arg("imSize"), 
+             py::arg("fresnelNumbers"), 
              py::arg("lowFreqLim"),
              py::arg("highFreqLim"), 
-             py::arg("ratio"), 
-             py::arg("padsize") = IntArray(), 
-             py::arg("padtype") = CUDAUtils::PaddingType::Replicate, 
-             py::arg("padvalue") = 0.0f)
-        .def("reconsBatch", &PhaseRetrieval::CTFReconstructor::reconsBatch,
-             "Reconstruct a batch of holograms using CTF",
-             py::arg("holograms"));
+             py::arg("ratio"),
+             py::arg("padSize") = IntArray(), 
+             py::arg("padType") = CUDAUtils::PaddingType::Replicate, 
+             py::arg("padValue") = 0.0f)
+
+        .def("reconsBatch", [](PhaseRetrieval::CTFReconstructor& self, py::array_t<float> holograms_array) {
+            py::buffer_info buf = holograms_array.request();
+            if (buf.ndim != 4) {
+                throw std::runtime_error("Holograms array must be 4D");
+            }
+
+            int batchSize = buf.shape[0];
+            int rows = buf.shape[2];
+            int cols = buf.shape[3];
+
+            // Convert numpy array to FArray (flatten)
+            FArray holograms;
+            float* data_ptr = static_cast<float*>(buf.ptr);
+            holograms.assign(data_ptr, data_ptr + buf.size);
+            
+            // Call the original C++ function
+            FArray result = self.reconsBatch(holograms);
+            
+            // Convert result back to numpy array
+            auto output = py::array_t<float>(result.size());
+            py::buffer_info output_buf = output.request();
+            float* output_ptr = static_cast<float*>(output_buf.ptr);
+            
+            std::copy(result.begin(), result.end(), output_ptr);
+            output.resize({batchSize, rows, cols});
+            return output;
+        }, "Reconstruct a batch of holograms using CTF with auto-parsing from numpy array",
+            py::arg("holograms"));
     
     // Bind Reconstructor class
     py::class_<PhaseRetrieval::Reconstructor>(m, "Reconstructor")
@@ -446,9 +472,9 @@ PYBIND11_MODULE(hiholo, m) {
                       float, float, float, float, const IntArray&, float, const IntArray&, CUDAUtils::PaddingType,
                       float, PMagnitudeCons::Type, CUDAPropKernel::Type>(),
              "Initialize Iterative Reconstructor",
-             py::arg("batchsize"),
+             py::arg("batchSize"),
              py::arg("images"),
-             py::arg("imsize"),
+             py::arg("imSize"),
              py::arg("fresnelNumbers"),
              py::arg("iter"),
              py::arg("algo"),
@@ -459,14 +485,47 @@ PYBIND11_MODULE(hiholo, m) {
              py::arg("maxAmplitude"),
              py::arg("support"),
              py::arg("outsideValue"),
-             py::arg("padsize") = IntArray(),
-             py::arg("padtype") = CUDAUtils::PaddingType::Replicate,
-             py::arg("padvalue") = 0.0f,
+             py::arg("padSize") = IntArray(),
+             py::arg("padType") = CUDAUtils::PaddingType::Replicate,
+             py::arg("padValue") = 0.0f,
              py::arg("projType") = PMagnitudeCons::Type::Averaged,
              py::arg("kernelType") = CUDAPropKernel::Type::Fourier)
-        .def("reconsBatch", &PhaseRetrieval::Reconstructor::reconsBatch,
-             "Reconstruct a batch of holograms using iterative method",
-             py::arg("holograms"),
-             py::arg("initialPhase"));
+        .def("reconsBatch", [](PhaseRetrieval::Reconstructor& self, py::array_t<float> holograms_array,
+                               py::array_t<float> initialPhase_array) {
+            py::buffer_info buf = holograms_array.request();
+            if (buf.ndim != 4) {
+                throw std::runtime_error("Holograms array must be 4D");
+            }
 
+            int batchSize = buf.shape[0];
+            int rows = buf.shape[2];
+            int cols = buf.shape[3];
+
+            // Convert holograms numpy array to FArray (flatten)
+            FArray holograms;
+            float* data_ptr = static_cast<float*>(buf.ptr);
+            holograms.assign(data_ptr, data_ptr + buf.size);
+            
+            // Convert initialPhase array if provided
+            FArray initialPhase;
+            if (initialPhase_array.size() > 0) {
+                py::buffer_info phase_buf = initialPhase_array.request();
+                float* phase_data_ptr = static_cast<float*>(phase_buf.ptr);
+                initialPhase.assign(phase_data_ptr, phase_data_ptr + phase_buf.size);
+            }
+            
+            // Call the original C++ function
+            FArray result = self.reconsBatch(holograms, initialPhase);
+            
+            // Convert result back to numpy array
+            auto output = py::array_t<float>(result.size());
+            py::buffer_info output_buf = output.request();
+            float* output_ptr = static_cast<float*>(output_buf.ptr);
+            
+            std::copy(result.begin(), result.end(), output_ptr);
+            output.resize({batchSize, rows, cols});
+            return output;
+        }, "Reconstruct a batch of holograms using iterative method with auto-parsing from numpy array",
+            py::arg("holograms"),
+            py::arg("initialPhase") = py::array_t<float>());
 }

@@ -1,7 +1,19 @@
 import h5py
 import numpy as np
+from PIL import Image
 import SimpleITK as sitk
 import hiholo
+
+def read_float_from_tiff(file_path):
+    img = Image.open(file_path)
+    # 支持 'F', 'I', 'I;16' 三种模式
+    if img.mode == 'F':
+        return np.array(img).astype(np.float32)
+    elif img.mode == 'I;16':
+        # I;16 需要先转成 np.uint16，再转 float32
+        return np.array(img, dtype=np.uint16).astype(np.float32)
+    else:
+        raise ValueError(f"Input image mode is {img.mode}, not float!")
 
 def read_h5_to_double(file_path, dataset_name=None):
     with h5py.File(file_path, 'r') as f:
@@ -64,9 +76,34 @@ def scale_display_data(data, max_size=1024):
     else:
         return data
 
+def create_h5_file_dataset(file_path, dataset_name, shape):
+    with h5py.File(file_path, 'w') as f:
+        f.create_dataset(dataset_name, shape=shape, dtype=np.float32)
+
 def save_h5_from_float(file_path, dataset_name, data):
     with h5py.File(file_path, 'w') as f:
         f.create_dataset(dataset_name, data=data, dtype=np.float32)
+
+def save_3d_batch_data(file_path, dataset_name, data, offset):
+    with h5py.File(file_path, 'a') as f:
+        if dataset_name not in f:
+            raise ValueError(f"Dataset '{dataset_name}' not found in file '{file_path}'")
+        dataset = f[dataset_name]
+        if dataset.ndim != 3 or data.ndim != 3:
+            raise ValueError(f"Target dataset or input data is not 3D!")
+        dataset[offset:offset+data.shape[0], :, :] = data
+
+# Append a 4D batch (data) into an existing 4D dataset along the first dimension
+def save_4d_batch_data(file_path, dataset_name, data, offset):
+    with h5py.File(file_path, 'a') as f:
+        if dataset_name not in f:
+            raise ValueError(f"Dataset '{dataset_name}' not found in file '{file_path}'")
+        dataset = f[dataset_name]
+        if dataset.ndim != 4 or data.ndim != 4:
+            raise ValueError(f"Target dataset or input data is not 4D!")
+        
+        data_to_write = data.astype(dataset.dtype) if data.dtype != dataset.dtype else data
+        dataset[offset:offset+data.shape[0], :, :, :] = data_to_write
 
 def read_holodata_info(file_path, datasets):
     dataset_list = [ds.strip() for ds in datasets.split(',')]
@@ -133,28 +170,61 @@ def get_angle_data(file_path, datasets, angle):
     data_angle = np.stack(data_angle, axis=0)
     return data_angle;
 
-def remove_outliers(data, kernelSize=5, threshold=2.0):
-    # Ensure data is 3D
-    if len(data.shape) != 3:
-        raise ValueError(f"Data is not 3D. Actual dimensions: {data.shape}")
+def get_batch_raw_data(file_path, datasets, start, batch_size):
+    dataset_list = [ds.strip() for ds in datasets.split(',')]
+    data_batch = []
+    with h5py.File(file_path, 'r') as f:
+        for i in range(len(dataset_list)):
+            if dataset_list[i] not in f:
+                raise ValueError(f"Dataset '{dataset_list[i]}' not found in HDF5 file")
+            data = np.array(f[dataset_list[i]], dtype=np.float32)
+            data_batch.append(data[start:start+batch_size])
 
-    processed_data = np.zeros_like(data)
-    for i in range(data.shape[0]):
-        processed_data[i] = hiholo.removeOutliers(data[i], kernelSize, threshold)
-    return processed_data
+    data_batch = np.stack(data_batch, axis=1)
+    return data_batch
+
+def get_batch_recon_data(file_path, dataset, start, batch_size):
+    with h5py.File(file_path, 'r') as f:
+        if dataset not in f:
+            raise ValueError(f"Dataset '{dataset}' not found in HDF5 file")
+        data = np.array(f[dataset], dtype=np.float32)
+        return data[start:start+batch_size]
+
+def remove_outliers(data, kernelSize=5, threshold=2.0):
+    # Ensure data is 3D or 4D
+    if len(data.shape) == 3:
+        processed_data = np.zeros_like(data)
+        for i in range(data.shape[0]):
+            processed_data[i] = hiholo.removeOutliers(data[i], kernelSize, threshold)
+        return processed_data
+    elif len(data.shape) == 4:
+        processed_data = np.zeros_like(data)
+        for i in range(data.shape[0]):
+            for j in range(data.shape[1]):
+                processed_data[i, j] = hiholo.removeOutliers(data[i, j], kernelSize, threshold)
+        return processed_data
+    else:
+        raise ValueError(f"Data must be 3D or 4D. Actual dimensions: {data.shape}")
 
 def remove_stripes(data, rangeRows=0, rangeCols=0, windowSize=5, method="mul"):
-    # Ensure data is 3D
-    if len(data.shape) != 3:
-        raise ValueError(f"Data is not 3D. Actual dimensions: {data.shape}")
-
-    processed_data = np.zeros_like(data)
-    for i in range(data.shape[0]):
-        processed_data[i] = hiholo.removeStripes(data[i], rangeRows, rangeCols, windowSize, method)
-    return processed_data
+    # Ensure data is 3D or 4D
+    if len(data.shape) == 3:
+        processed_data = np.zeros_like(data)
+        for i in range(data.shape[0]):
+            processed_data[i] = hiholo.removeStripes(data[i], rangeRows, rangeCols, windowSize, method)
+        return processed_data
+    elif len(data.shape) == 4:
+        processed_data = np.zeros_like(data)
+        for i in range(data.shape[0]):
+            for j in range(data.shape[1]):
+                processed_data[i, j] = hiholo.removeStripes(data[i, j], rangeRows, rangeCols, windowSize, method)
+        return processed_data
+    else:
+        raise ValueError(f"Data must be 3D or 4D. Actual dimensions: {data.shape}")
 
 def dark_flat_correction(data, dark, flat, isAPWP=False):
-    dark = np.repeat(dark, data.shape[0], axis=0)
+    if dark.shape[0] != data.shape[0]:
+        dark = np.repeat(dark, data.shape[0], axis=0)
     if isAPWP:
         holo = data - dark
         probe = flat - dark

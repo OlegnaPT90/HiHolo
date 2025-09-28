@@ -1,6 +1,10 @@
-import mytools
 import numpy as np
 import time
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import mytools
 
 def test_image_registration():
     """Test image registration functions using h5 files"""
