@@ -17,29 +17,29 @@ datasets = "holodata_distance_0,holodata_distance_1,holodata_distance_2,holodata
 back_dataset = "backgrounds"
 dark_dataset = "darks"
 
-# The first interface
+# The first interface (required)
 angle = 127
-data_angle = mytools.get_angle_data(input_file, datasets, angle)
+holo_data = mytools.get_angle_data(input_file, datasets, angle)
 back_data = mytools.read_h5_to_float(input_file, back_dataset)
 dark_data = mytools.read_h5_to_float(input_file, dark_dataset)
 
-# The second interface
+# The second interface (optional)
 kernel_size = 5
 threshold = 2.0
 range_value = 0
 window_size = 5
 method = "mul"
 
-data_angle = mytools.remove_outliers(data_angle, kernel_size, threshold)
-data_angle = mytools.remove_stripes(data_angle, range_value, range_value, window_size, method)
+holo_data = mytools.remove_outliers(holo_data, kernel_size, threshold)
+holo_data = mytools.remove_stripes(holo_data, range_value, range_value, window_size, method)
 back_data = mytools.remove_outliers(back_data, kernel_size, threshold)
 dark_data = mytools.remove_outliers(dark_data, kernel_size, threshold)
 
-# The third interface
+# The third interface (optional)
 isAPWP = False
-holo_data, probe_data = mytools.dark_flat_correction(data_angle, dark_data, back_data, isAPWP)
+holo_data, probe_data = mytools.dark_flat_correction(holo_data, dark_data, back_data, isAPWP)
 
-# The fourth interface
+# The fourth interface (optional)
 holo_data, translations = mytools.register_images(holo_data)
 
 fresnel_numbers = [[1.6667e-3], [8.3333e-4], [4.83333e-4], [2.66667e-4]]

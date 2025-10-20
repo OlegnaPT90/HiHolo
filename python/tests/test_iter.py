@@ -30,7 +30,7 @@ import mytools
 def display_image(phase, title="Phase"):
     """Display image"""
     plt.figure(figsize=(8, 8))
-    plt.imshow(phase, cmap='viridis')
+    plt.imshow(phase, cmap='gray')
     plt.colorbar()
     plt.title(title)
     plt.pause(3)
@@ -47,9 +47,11 @@ def test_reconstruction():
     #input_file = "/home/hug/Downloads/HoloTomo_Data/holo_regist_new.h5"
     #input_file = "/home/hug/Downloads/HoloTomo_Data/holo_purephase.h5"
     #input_file = "/home/hug/Downloads/HoloTomo_Data/holopadw1.h5"
-    input_file = "/home/hug/Downloads/HoloTomo_Data/data_new/holo_probewithobj1.h5"
-    #input_dataset = "holodata"
-    input_dataset = "hologramCTF_objwithprobe"
+    #input_file = "/home/hug/Downloads/HoloTomo_Data/dog_cat_dataset/multi-distances/holo_probewithobj4.h5"
+    #input_file = "/home/hug/Downloads/HoloTomo_Data/diff_1.tif"
+    input_file = "/home/hug/Downloads/HoloTomo_Data/holo_data.h5"
+    input_dataset = "holodata"
+    #input_dataset = "hologramCTF_objwithprobe"
     # output_file = "/home/hug/Downloads/HoloTomo_Data/visiblelight/board_result.h5"
     output_file = "/home/hug/Downloads/HoloTomo_Data/result.h5"
     output_dataset = "phasedata"
@@ -57,13 +59,14 @@ def test_reconstruction():
     # List of fresnel numbers
     # fresnel_numbers = [[0.0016667], [0.00083333], [0.000483333], [0.000266667]]
     # fresnel_numbers = [[2.906977e-4], [1.453488e-4], [8.4302325e-5], [4.651163e-5]]
-    # fresnel_numbers = [[0.003], [0.0015], [0.00087], [0.00039], [0.000216]]
-    fresnel_numbers = [[0.0126]]
+    fresnel_numbers = [[0.003], [0.0015], [0.00087], [0.00039], [0.000216]]
+    # fresnel_numbers = [[0.0126], [0.00725], [0.00426], [0.00886]]
+    #fresnel_numbers = [[0.0126]]
     print(f"Using {len(fresnel_numbers)} fresnel numbers: {fresnel_numbers}")
     
     # Reconstruction parameters
     iterations = 300            # Number of iterations
-    plot_interval = 100          # Interval for displaying results
+    plot_interval = 300         # Interval for displaying results
     
     # Initial guess (optional)
     #initial_phase_file = "/home/hug/Downloads/HoloTomo_Data/purephase_ctf_result.h5"
@@ -82,10 +85,10 @@ def test_reconstruction():
         algo_params = [0.7]
     
     # Constraints
-    amp_limits = [0, float('inf')]  # [min, max] amplitude
+    amp_limits = [0, float('inf')]
     phase_limits = [-float('inf'), float('inf')]  # [min, max] phase
     support = []  # Support constraint region size
-    outside_value = 1.0  # Value outside support region
+    outside_value = 0.0  # Value outside support region
     
     # Padding
     pad_size = []  # Padding size
@@ -93,8 +96,9 @@ def test_reconstruction():
     pad_value = 0.0
     
     # Probe parameters (for APWP algorithm)
-    probe_file = "/home/hug/Downloads/HoloTomo_Data/data_new/holo_probe1.h5"
-    probe_dataset = "hologramCTF_probe"
+    probe_file = "/home/hug/Downloads/HoloTomo_Data/probe_data.h5"
+    #probe_dataset = "hologramCTF_probe"
+    probe_dataset = "holodata"
     probe_phase_file = None
     probe_phase_dataset = None
     
@@ -103,20 +107,17 @@ def test_reconstruction():
     kernel_type = hiholo.PropKernelType.Fourier
     
     # Error calculation
-    calc_error = True
+    calc_error = False
     
     #############################################################
     # End of parameters section
     #############################################################
     
-    # Read holograms
-    # with h5py.File(input_file, 'r') as f:
-    #     holo_data = np.array(f[input_dataset], dtype=np.float32)
     holo_data = mytools.read_h5_to_float(input_file, input_dataset)
-    print(holo_data)
     print(f"Loaded hologram of size {holo_data.shape}")
     #holo_data = holo_data / holo_data.max()
-    display_image(holo_data, "Hologram")
+    display_image(holo_data[0], "Hologram")
+    plt.imsave("holodata_0.png", holo_data[0], cmap='gray')
 
     # Read initial phase if provided
     initial_phase_array = np.array([])
@@ -129,8 +130,9 @@ def test_reconstruction():
     probe_phase_array = np.array([])
     if algorithm == hiholo.Algorithm.APWP:
         if probe_file is not None:
-            with h5py.File(probe_file, 'r') as f:
-                probe_array = np.array(f[probe_dataset], dtype=np.float32)
+            probe_array = mytools.read_h5_to_float(probe_file, probe_dataset)
+            plt.imsave("probeholo_0.png", probe_array[0], cmap='gray')
+            #probe_array = probe_array / probe_array.max()
         
         if probe_phase_file is not None:
             with h5py.File(probe_phase_file, 'r') as f:
@@ -238,8 +240,10 @@ def test_reconstruction():
         plt.close()
     
     # Save images
-    plt.imsave("phase.png", result[0], cmap='viridis')
-    plt.imsave("amplitude.png", result[1], cmap='viridis')
+    plt.imsave("phase_multi.png", result[0], cmap='gray')
+    plt.imsave("amplitude.png", result[1], cmap='gray')
+    if algorithm == hiholo.Algorithm.APWP:
+        plt.imsave("probe_phase_multi.png", result[2], cmap='gray')
         
     # Save reconstructed holograms
     with h5py.File(output_file, 'w') as f:

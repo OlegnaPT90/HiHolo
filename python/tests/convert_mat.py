@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 MAT到HDF5格式转换工具
-将MATLAB格式文件(.mat)转换为HDF5格式(.h5)，保持数据类型和结构一致
+将MATLAB格式文件(.mat)转换为HDF5格式(.h5)
+数据格式转换: (h, w, c) -> (c, h, w)
 """
 
 import h5py
@@ -39,10 +40,26 @@ def convert_matlab_type_to_hdf5(data):
         except:
             return data
 
+def move_third_axis_to_first(arr):
+    """
+    将数组从 (h, w, c) 格式转换为 (c, h, w) 格式
+    如果数组是3维或以上，把第三个维（axis=2）移到最前面，其余维度顺序向后。
+    例如: (h, w, c) -> (c, h, w)
+    """
+    if not isinstance(arr, np.ndarray):
+        return arr
+    if arr.ndim < 3:
+        return arr  # 无需变化
+    # 移动第三维(c)到第一维，原第一维(h)和第二维(w)顺序后移
+    axes = list(range(arr.ndim))
+    third_idx = 2
+    new_axes = [third_idx] + axes[:third_idx] + axes[third_idx+1:]
+    arr_new = np.transpose(arr, new_axes)
+    return arr_new
 
 def convert_mat_to_hdf5(mat_file_path, hdf5_file_path=None, compression='gzip', compression_level=9):
     """
-    将MAT文件转换为HDF5文件
+    将MAT文件转换为HDF5文件，数据格式从 (h, w, c) 转换为 (c, h, w)
     
     Args:
         mat_file_path (str): 输入MAT文件路径
@@ -85,9 +102,17 @@ def convert_mat_to_hdf5(mat_file_path, hdf5_file_path=None, compression='gzip', 
                 # 转换数据类型
                 converted_data = convert_matlab_type_to_hdf5(var_data)
                 
+                # 如为高维数据，转维: (h, w, c) -> (c, h, w)
+                if isinstance(converted_data, np.ndarray) and converted_data.ndim >= 3:
+                    # 打印原shape
+                    print(f"  原始数据形状 (h,w,c): {converted_data.shape}")
+                    converted_data = move_third_axis_to_first(converted_data)
+                    print(f"  转换后形状 (c,h,w): {converted_data.shape}")
+                elif isinstance(converted_data, np.ndarray):
+                    print(f"  数据形状: {converted_data.shape}")
+
                 # 获取数据信息
                 if isinstance(converted_data, np.ndarray):
-                    print(f"  数据形状: {converted_data.shape}")
                     print(f"  数据类型: {converted_data.dtype}")
                     
                     # 保存到HDF5，保持原始数据类型
@@ -157,19 +182,26 @@ def verify_conversion(mat_file_path, hdf5_file_path):
                     h5_var = np.array(h5f[var_name])
                     
                     print(f"\n变量: {var_name}")
-                    print(f"  MAT - 形状: {mat_var.shape if hasattr(mat_var, 'shape') else 'N/A'}, "
-                          f"类型: {mat_var.dtype if hasattr(mat_var, 'dtype') else type(mat_var)}")
+
+                    # 对比之前尝试转维使shape一致: (h,w,c) -> (c,h,w)
+                    mat_var_compare = mat_var
+                    if isinstance(mat_var, np.ndarray) and mat_var.ndim >= 3:
+                        # 将matlab的数据从(h,w,c)转换为(c,h,w)
+                        mat_var_compare = move_third_axis_to_first(mat_var)
+
+                    print(f"  MAT - 形状: {mat_var_compare.shape if hasattr(mat_var_compare, 'shape') else 'N/A'}, "
+                          f"类型: {mat_var_compare.dtype if hasattr(mat_var_compare, 'dtype') else type(mat_var_compare)}")
                     print(f"  HDF5 - 形状: {h5_var.shape if hasattr(h5_var, 'shape') else 'N/A'}, "
                           f"类型: {h5_var.dtype if hasattr(h5_var, 'dtype') else type(h5_var)}")
                     
                     # 数据一致性检查
-                    if isinstance(mat_var, np.ndarray) and isinstance(h5_var, np.ndarray):
-                        if mat_var.shape == h5_var.shape:
+                    if isinstance(mat_var_compare, np.ndarray) and isinstance(h5_var, np.ndarray):
+                        if mat_var_compare.shape == h5_var.shape:
                             # 检查数值是否相等（考虑浮点精度）
-                            if np.allclose(mat_var, h5_var, rtol=1e-15, atol=1e-15):
+                            if np.allclose(mat_var_compare, h5_var, rtol=1e-15, atol=1e-15):
                                 print(f"  ✓ 数据一致")
                             else:
-                                max_diff = np.max(np.abs(mat_var - h5_var))
+                                max_diff = np.max(np.abs(mat_var_compare - h5_var))
                                 print(f"  ⚠ 数据存在差异，最大差值: {max_diff}")
                         else:
                             print(f"  ✗ 形状不匹配")
@@ -225,7 +257,7 @@ def list_mat_variables(mat_file_path):
 
 def main():
     """主函数"""
-    parser = argparse.ArgumentParser(description='将MAT文件转换为HDF5格式')
+    parser = argparse.ArgumentParser(description='将MAT文件转换为HDF5格式，数据从(h,w,c)转换为(c,h,w)')
     parser.add_argument('input_file', help='输入MAT文件路径')
     parser.add_argument('-o', '--output', help='输出HDF5文件路径（可选）')
     parser.add_argument('-c', '--compression', default='gzip', 
